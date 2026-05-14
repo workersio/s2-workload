@@ -2,6 +2,28 @@ apiVersion: v1
 entries:
   s2-lite-helm:
   - apiVersion: v2
+    appVersion: 0.32.0
+    created: "2026-05-14T20:32:16.781258131Z"
+    description: Self-hostable S2 streaming datastore using SlateDB on object storage
+    digest: b6a7a131e7651be34fed62ecdb0a6908612fc9535721cf23cd1eec09cf058d7d
+    home: https://s2.dev
+    keywords:
+    - s2
+    - streaming
+    - datastore
+    - slatedb
+    - object-storage
+    maintainers:
+    - email: hi@s2.dev
+      name: S2 Team
+    name: s2-lite-helm
+    sources:
+    - https://github.com/s2-streamstore/s2
+    type: application
+    urls:
+    - https://github.com/s2-streamstore/s2/releases/download/s2-lite-helm-0.1.31/s2-lite-helm-0.1.31.tgz
+    version: 0.1.31
+  - apiVersion: v2
     appVersion: 0.31.0
     created: "2026-05-10T20:55:43.424592868Z"
     description: Self-hostable S2 streaming datastore using SlateDB on object storage
@@ -683,4 +705,4 @@ entries:
     urls:
     - https://github.com/s2-streamstore/s2/releases/download/s2-lite-helm-0.1.0/s2-lite-helm-0.1.0.tgz
     version: 0.1.0
-generated: "2026-05-10T20:55:43.424842604Z"
+generated: "2026-05-14T20:32:16.781463881Z"
