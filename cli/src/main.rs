@@ -292,13 +292,13 @@ async fn run() -> Result<(), CliError> {
         Command::ListScopes(args) => {
             let (scopes, _) = ops::list_scopes(&s2, args).await?;
             for scope_info in scopes {
-                print_scope_listing(scope_info.name.to_string(), scope_info.is_public);
+                print_scope_listing(scope_info.name.to_string(), scope_info.is_dedicated);
             }
         }
 
         Command::GetDefaultScope => {
             let scope = ops::get_default_scope(&s2).await?;
-            print_scope_details(scope.name.to_string(), scope.is_public);
+            print_scope_details(scope.name.to_string(), scope.is_dedicated);
         }
 
         Command::SetDefaultScope { scope } => {
@@ -310,7 +310,7 @@ async fn run() -> Result<(), CliError> {
                     .green()
                     .bold()
             );
-            print_scope_details(scope.name.to_string(), scope.is_public);
+            print_scope_details(scope.name.to_string(), scope.is_dedicated);
         }
 
         Command::GetAccountMetrics(args) => {
@@ -675,21 +675,21 @@ fn print_basin_listing(name: String, scope: Option<&str>, is_deleting: bool) {
     }
 }
 
-fn print_scope_listing(name: String, is_public: bool) {
-    let visibility = format_scope_visibility(is_public);
+fn print_scope_listing(name: String, is_dedicated: bool) {
+    let visibility = format_scope_visibility(is_dedicated);
     println!("{name} {visibility}");
 }
 
-fn print_scope_details(name: String, is_public: bool) {
-    let visibility = format_scope_visibility(is_public);
+fn print_scope_details(name: String, is_dedicated: bool) {
+    let visibility = format_scope_visibility(is_dedicated);
     println!("{name} {visibility}");
 }
 
-fn format_scope_visibility(is_public: bool) -> colored::ColoredString {
-    if is_public {
-        "(public)".green()
-    } else {
+fn format_scope_visibility(is_dedicated: bool) -> colored::ColoredString {
+    if is_dedicated {
         "(dedicated)".yellow()
+    } else {
+        "(public)".green()
     }
 }
 
