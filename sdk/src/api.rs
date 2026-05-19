@@ -21,6 +21,7 @@ use s2_api::v1::{
     metrics::{
         AccountMetricSetRequest, BasinMetricSetRequest, MetricSetResponse, StreamMetricSetRequest,
     },
+    scope::{ListScopesRequest, ListScopesResponse, ScopeInfo},
     stream::{
         AppendConditionFailed, CreateStreamRequest, ListStreamsRequest, ListStreamsResponse,
         ReadEnd, ReadStart, StreamInfo, TailResponse,
@@ -42,7 +43,7 @@ use crate::{
     retry::{RetryBackoff, RetryBackoffBuilder},
     types::{
         AccessTokenId, AppendRetryPolicy, BasinAuthority, BasinName, Compression, EncryptionKey,
-        RetryConfig, S2Config, S2Endpoints, StreamName,
+        RetryConfig, S2Config, S2Endpoints, ScopeName, StreamName,
     },
 };
 #[cfg(feature = "_hidden")]
@@ -121,6 +122,30 @@ impl AccountClient {
         let request = self.delete(url).build()?;
         let _response = self.request(request).send().await?;
         Ok(())
+    }
+
+    pub async fn list_scopes(
+        &self,
+        request: ListScopesRequest,
+    ) -> Result<ListScopesResponse, ApiError> {
+        let url = self.base_url.join("v1/scopes")?;
+        let request = self.get(url).query(&request).build()?;
+        let response = self.request(request).send().await?;
+        Ok(response.json::<ListScopesResponse>()?)
+    }
+
+    pub async fn get_default_scope(&self) -> Result<ScopeInfo, ApiError> {
+        let url = self.base_url.join("v1/scopes/default")?;
+        let request = self.get(url).build()?;
+        let response = self.request(request).send().await?;
+        Ok(response.json::<ScopeInfo>()?)
+    }
+
+    pub async fn set_default_scope(&self, scope: ScopeName) -> Result<ScopeInfo, ApiError> {
+        let url = self.base_url.join("v1/scopes/default")?;
+        let request = self.put(url).json(&scope).build()?;
+        let response = self.request(request).send().await?;
+        Ok(response.json::<ScopeInfo>()?)
     }
 
     pub async fn list_basins(

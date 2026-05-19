@@ -12,10 +12,10 @@ use crate::{
         AccessTokenId, AccessTokenInfo, AppendAck, AppendInput, BasinConfig, BasinInfo, BasinName,
         CreateBasinInput, CreateStreamInput, DeleteBasinInput, DeleteStreamInput, EncryptionKey,
         GetAccountMetricsInput, GetBasinMetricsInput, GetStreamMetricsInput, IssueAccessTokenInput,
-        ListAccessTokensInput, ListAllAccessTokensInput, ListAllBasinsInput, ListAllStreamsInput,
-        ListBasinsInput, ListStreamsInput, Metric, Page, ReadBatch, ReadInput,
-        ReconfigureBasinInput, ReconfigureStreamInput, S2Config, S2Error, StreamConfig, StreamInfo,
-        StreamName, StreamPosition, Streaming,
+        ListAccessTokensInput, ListAllAccessTokensInput, ListAllBasinsInput, ListAllScopesInput,
+        ListAllStreamsInput, ListBasinsInput, ListScopesInput, ListStreamsInput, Metric, Page,
+        ReadBatch, ReadInput, ReconfigureBasinInput, ReconfigureStreamInput, S2Config, S2Error,
+        ScopeInfo, ScopeName, StreamConfig, StreamInfo, StreamName, StreamPosition, Streaming,
     },
 };
 
@@ -213,6 +213,57 @@ impl S2 {
     /// Revoke an access token.
     pub async fn revoke_access_token(&self, id: AccessTokenId) -> Result<(), S2Error> {
         Ok(self.client.revoke_access_token(id).await?)
+    }
+
+    /// List a page of scopes.
+    ///
+    /// See [`list_all_scopes`](crate::S2::list_all_scopes) for automatic pagination.
+    pub async fn list_scopes(&self, input: ListScopesInput) -> Result<Page<ScopeInfo>, S2Error> {
+        let response = self.client.list_scopes(input.into()).await?;
+        Ok(Page::new(
+            response
+                .scopes
+                .into_iter()
+                .map(Into::into)
+                .collect::<Vec<_>>(),
+            response.has_more,
+        ))
+    }
+
+    /// List all scopes, paginating automatically.
+    pub fn list_all_scopes(&self, input: ListAllScopesInput) -> Streaming<ScopeInfo> {
+        let s2 = self.clone();
+        let prefix = input.prefix;
+        let start_after = input.start_after;
+        let mut input = ListScopesInput::new()
+            .with_prefix(prefix)
+            .with_start_after(start_after);
+        Box::pin(async_stream::try_stream! {
+            loop {
+                let page = s2.list_scopes(input.clone()).await?;
+
+                let start_after = page.values.last().map(|info| info.name.clone().into());
+                for info in page.values {
+                    yield info;
+                }
+
+                if page.has_more && let Some(start_after) = start_after {
+                    input = input.with_start_after(start_after);
+                } else {
+                    break;
+                }
+            }
+        })
+    }
+
+    /// Get the default scope.
+    pub async fn get_default_scope(&self) -> Result<ScopeInfo, S2Error> {
+        Ok(self.client.get_default_scope().await?.into())
+    }
+
+    /// Set the default scope.
+    pub async fn set_default_scope(&self, scope: ScopeName) -> Result<ScopeInfo, S2Error> {
+        Ok(self.client.set_default_scope(scope).await?.into())
     }
 
     /// Get account metrics.

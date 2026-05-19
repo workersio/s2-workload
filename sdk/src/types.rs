@@ -48,9 +48,13 @@ pub use s2_common::types::basin::BasinNameStartAfter;
 pub use s2_common::types::resources::ProvisionResult;
 /// Scope name.
 ///
-/// **Note:** It must be less than 40 characters in length and can only comprise ASCII
+/// **Note:** It must be between 1 and 39 characters in length and can only comprise ASCII
 /// letters, numbers, colons, hyphens, and periods.
 pub use s2_common::types::scope::ScopeName;
+/// See [`ListScopesInput::prefix`].
+pub use s2_common::types::scope::ScopeNamePrefix;
+/// See [`ListScopesInput::start_after`].
+pub use s2_common::types::scope::ScopeNameStartAfter;
 /// Stream name.
 ///
 /// **Note:** It must be unique to the basin and between 1 and 512 bytes in length.
@@ -1474,6 +1478,123 @@ impl ListAllAccessTokensInput {
         Self {
             start_after,
             ..self
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+#[non_exhaustive]
+/// Input for [`list_scopes`](crate::S2::list_scopes) operation.
+pub struct ListScopesInput {
+    /// Filter scopes whose names begin with this value.
+    ///
+    /// Defaults to `""`.
+    pub prefix: ScopeNamePrefix,
+    /// Filter scopes whose names are lexicographically greater than this value.
+    ///
+    /// **Note:** It must be greater than or equal to [`prefix`](ListScopesInput::prefix).
+    ///
+    /// Defaults to `""`.
+    pub start_after: ScopeNameStartAfter,
+    /// Number of scopes to return in a page. Will be clamped to a maximum of `1000`.
+    ///
+    /// Defaults to `1000`.
+    pub limit: Option<usize>,
+}
+
+impl ListScopesInput {
+    /// Create a new [`ListScopesInput`] with default values.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set the prefix used to filter scopes whose names begin with this value.
+    pub fn with_prefix(self, prefix: ScopeNamePrefix) -> Self {
+        Self { prefix, ..self }
+    }
+
+    /// Set the value used to filter scopes whose names are lexicographically greater than this
+    /// value.
+    pub fn with_start_after(self, start_after: ScopeNameStartAfter) -> Self {
+        Self {
+            start_after,
+            ..self
+        }
+    }
+
+    /// Set the limit on number of scopes to return in a page.
+    pub fn with_limit(self, limit: usize) -> Self {
+        Self {
+            limit: Some(limit),
+            ..self
+        }
+    }
+}
+
+impl From<ListScopesInput> for api::scope::ListScopesRequest {
+    fn from(value: ListScopesInput) -> Self {
+        Self {
+            prefix: Some(value.prefix),
+            start_after: Some(value.start_after),
+            limit: value.limit,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+/// Input for [`S2::list_all_scopes`](crate::S2::list_all_scopes).
+pub struct ListAllScopesInput {
+    /// Filter scopes whose names begin with this value.
+    ///
+    /// Defaults to `""`.
+    pub prefix: ScopeNamePrefix,
+    /// Filter scopes whose names are lexicographically greater than this value.
+    ///
+    /// **Note:** It must be greater than or equal to [`prefix`](ListAllScopesInput::prefix).
+    ///
+    /// Defaults to `""`.
+    pub start_after: ScopeNameStartAfter,
+}
+
+impl ListAllScopesInput {
+    /// Create a new [`ListAllScopesInput`] with default values.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set the prefix used to filter scopes whose names begin with this value.
+    pub fn with_prefix(self, prefix: ScopeNamePrefix) -> Self {
+        Self { prefix, ..self }
+    }
+
+    /// Set the value used to filter scopes whose names are lexicographically greater than this
+    /// value.
+    pub fn with_start_after(self, start_after: ScopeNameStartAfter) -> Self {
+        Self {
+            start_after,
+            ..self
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+/// Scope information.
+pub struct ScopeInfo {
+    /// Scope name.
+    pub name: ScopeName,
+    /// Whether the scope is publicly shared.
+    pub is_public: bool,
+    /// Scope description.
+    pub description: Option<String>,
+}
+
+impl From<api::scope::ScopeInfo> for ScopeInfo {
+    fn from(value: api::scope::ScopeInfo) -> Self {
+        Self {
+            name: value.name,
+            is_public: value.is_public,
+            description: value.description,
         }
     }
 }
