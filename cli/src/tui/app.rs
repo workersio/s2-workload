@@ -4308,7 +4308,15 @@ impl App {
             let mut input =
                 s2_sdk::types::CreateBasinInput::new(basin_name).with_config(config.into());
             if !scope.is_empty() {
-                input = input.with_scope(scope);
+                input = match input.with_scope(scope) {
+                    Ok(input) => input,
+                    Err(e) => {
+                        let _ = tx.send(Event::BasinCreated(Err(CliError::RecordWrite(format!(
+                            "Invalid basin scope: {e}"
+                        )))));
+                        return;
+                    }
+                };
             }
 
             match s2

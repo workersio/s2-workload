@@ -1,6 +1,6 @@
 use s2_common::types::{
     self,
-    basin::{BasinName, BasinNamePrefix, BasinNameStartAfter},
+    basin::{BasinName, BasinNamePrefix, BasinNameStartAfter, BasinScope},
 };
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
@@ -48,7 +48,7 @@ pub struct BasinInfo {
     /// Basin name.
     pub name: BasinName,
     /// Basin scope.
-    pub scope: Option<String>,
+    pub scope: Option<BasinScope>,
     /// Creation time in RFC 3339 format.
     #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
@@ -90,7 +90,7 @@ fn basin_state_for_deleted_at(deleted_at: Option<&OffsetDateTime>) -> BasinState
 #[derive(Deserialize)]
 struct BasinInfoSerde {
     name: BasinName,
-    scope: Option<String>,
+    scope: Option<BasinScope>,
     #[serde(with = "time::serde::rfc3339")]
     created_at: OffsetDateTime,
     #[serde(default, with = "time::serde::rfc3339::option")]
@@ -140,7 +140,7 @@ pub struct EnsureBasinRequest {
     /// Basin scope.
     /// If omitted when creating, uses the configured default scope.
     /// This cannot be changed.
-    pub scope: Option<String>,
+    pub scope: Option<BasinScope>,
 }
 
 #[rustfmt::skip]
@@ -155,5 +155,5 @@ pub struct CreateBasinRequest {
     pub config: Option<BasinConfig>,
     /// Basin scope.
     /// If omitted when creating, uses the configured default scope.
-    pub scope: Option<String>,
+    pub scope: Option<BasinScope>,
 }

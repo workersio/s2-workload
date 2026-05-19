@@ -42,6 +42,8 @@ pub use s2_common::types::basin::BasinName;
 pub use s2_common::types::basin::BasinNamePrefix;
 /// See [`ListBasinsInput::start_after`].
 pub use s2_common::types::basin::BasinNameStartAfter;
+/// Basin scope.
+pub use s2_common::types::basin::BasinScope;
 /// Result of provisioning a resource.
 #[doc(hidden)]
 #[cfg(feature = "_hidden")]
@@ -861,9 +863,6 @@ impl From<BasinConfig> for api::config::BasinConfig {
     }
 }
 
-/// Scope of a basin.
-pub type BasinScope = String;
-
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 /// Input for [`create_basin`](crate::S2::create_basin) operation.
@@ -901,11 +900,18 @@ impl CreateBasinInput {
     }
 
     /// Set the scope of the basin.
-    pub fn with_scope(self, scope: impl Into<BasinScope>) -> Self {
-        Self {
-            scope: Some(scope.into()),
+    pub fn with_scope<S>(self, scope: S) -> Result<Self, ValidationError>
+    where
+        S: TryInto<BasinScope>,
+        S::Error: fmt::Display,
+    {
+        let scope = scope
+            .try_into()
+            .map_err(|e| ValidationError(e.to_string()))?;
+        Ok(Self {
+            scope: Some(scope),
             ..self
-        }
+        })
     }
 }
 
@@ -960,11 +966,18 @@ impl EnsureBasinInput {
     }
 
     /// Set the scope of the basin.
-    pub fn with_scope(self, scope: impl Into<BasinScope>) -> Self {
-        Self {
-            scope: Some(scope.into()),
+    pub fn with_scope<S>(self, scope: S) -> Result<Self, ValidationError>
+    where
+        S: TryInto<BasinScope>,
+        S::Error: fmt::Display,
+    {
+        let scope = scope
+            .try_into()
+            .map_err(|e| ValidationError(e.to_string()))?;
+        Ok(Self {
+            scope: Some(scope),
             ..self
-        }
+        })
     }
 }
 
