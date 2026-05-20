@@ -139,7 +139,7 @@ pub struct EnsureBasinRequest {
     /// Basin configuration.
     pub config: Option<BasinConfig>,
     /// Basin scope.
-    /// If omitted when creating, uses the configured default scope.
+    /// If omitted when creating, uses the default scope for the service.
     /// This cannot be changed.
     pub scope: Option<ScopeName>,
 }
@@ -155,6 +155,6 @@ pub struct CreateBasinRequest {
     /// Basin configuration.
     pub config: Option<BasinConfig>,
     /// Basin scope.
-    /// If omitted when creating, uses the configured default scope.
+    /// If omitted when creating, uses the default scope for the service.
     pub scope: Option<ScopeName>,
 }

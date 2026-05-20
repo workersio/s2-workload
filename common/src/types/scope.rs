@@ -302,12 +302,12 @@ mod test {
     use crate::types::strings::{PrefixProps, StartAfterProps};
 
     #[rstest]
-    #[case::single_char("a")]
-    #[case::aws_region("aws:us-east-1")]
-    #[case::uppercase_and_period("cloud:US-West-2.edge")]
-    #[case::max_len("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]
-    fn validate_name_ok(#[case] scope: &str) {
-        assert_eq!(scope.parse::<ScopeName>().as_deref(), Ok(scope));
+    #[case::single_char("a".to_owned())]
+    #[case::aws_region("aws:us-east-1".to_owned())]
+    #[case::uppercase_and_period("cloud:US-West-2.edge".to_owned())]
+    #[case::max_len("a".repeat(crate::caps::MAX_SCOPE_NAME_LEN))]
+    fn validate_name_ok(#[case] scope: String) {
+        assert_eq!(scope.parse::<ScopeName>().as_deref(), Ok(scope.as_str()));
     }
 
     #[rstest]
@@ -324,14 +324,14 @@ mod test {
     }
 
     #[rstest]
-    #[case::empty("")]
-    #[case::aws_region("aws:us-east-1")]
-    #[case::uppercase_and_period("cloud:US-West-2.edge")]
-    #[case::max_len("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]
-    fn validate_prefix_ok(#[case] prefix: &str) {
+    #[case::empty("".to_owned())]
+    #[case::aws_region("aws:us-east-1".to_owned())]
+    #[case::uppercase_and_period("cloud:US-West-2.edge".to_owned())]
+    #[case::max_len("a".repeat(crate::caps::MAX_SCOPE_NAME_LEN))]
+    fn validate_prefix_ok(#[case] prefix: String) {
         assert_eq!(
             prefix.parse::<ScopeNameStr<PrefixProps>>().as_deref(),
-            Ok(prefix)
+            Ok(prefix.as_str())
         );
     }
 
@@ -348,16 +348,16 @@ mod test {
     }
 
     #[rstest]
-    #[case::empty("")]
-    #[case::aws_region("aws:us-east-1")]
-    #[case::uppercase_and_period("cloud:US-West-2.edge")]
-    #[case::max_len("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]
-    fn validate_start_after_ok(#[case] start_after: &str) {
+    #[case::empty("".to_owned())]
+    #[case::aws_region("aws:us-east-1".to_owned())]
+    #[case::uppercase_and_period("cloud:US-West-2.edge".to_owned())]
+    #[case::max_len("a".repeat(crate::caps::MAX_SCOPE_NAME_LEN))]
+    fn validate_start_after_ok(#[case] start_after: String) {
         assert_eq!(
             start_after
                 .parse::<ScopeNameStr<StartAfterProps>>()
                 .as_deref(),
-            Ok(start_after)
+            Ok(start_after.as_str())
         );
     }
 
