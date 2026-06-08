@@ -4988,11 +4988,11 @@ impl App {
             };
             stream_reconfig = stream_reconfig.with_timestamping(ts_reconfig);
 
-            if config.delete_on_empty_enabled {
-                if let Ok(d) = humantime::parse_duration(&config.delete_on_empty_min_age) {
-                    stream_reconfig = stream_reconfig
-                        .with_delete_on_empty(DeleteOnEmptyReconfiguration::new().with_min_age(d));
-                }
+            if config.delete_on_empty_enabled
+                && let Ok(d) = humantime::parse_duration(&config.delete_on_empty_min_age)
+            {
+                stream_reconfig = stream_reconfig
+                    .with_delete_on_empty(DeleteOnEmptyReconfiguration::new().with_min_age(d));
             }
 
             let basin_handle = s2.basin(basin);
