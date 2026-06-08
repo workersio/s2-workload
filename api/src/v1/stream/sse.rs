@@ -93,6 +93,7 @@ macro_rules! event {
 event!(Batch, "batch");
 event!(Error, "error");
 event!(Ping, "ping");
+event!(Done, "done");
 
 #[derive(Serialize)]
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
@@ -121,6 +122,8 @@ pub enum ReadEvent {
     #[cfg_attr(feature = "utoipa", schema(title = "done"))]
     #[serde(skip)]
     Done {
+        #[cfg_attr(feature = "utoipa", schema(inline))]
+        event: Done,
         #[cfg_attr(feature = "utoipa", schema(value_type = String, pattern = r"^\[DONE\]$"))]
         data: DoneEventData,
     },
@@ -163,7 +166,9 @@ pub fn ping_event() -> Result<axum::response::sse::Event, axum::Error> {
 
 #[cfg(feature = "axum")]
 pub fn done_event() -> Result<axum::response::sse::Event, axum::Error> {
-    Ok(axum::response::sse::Event::default().data(DoneEventData))
+    Ok(axum::response::sse::Event::default()
+        .event(Done::Done)
+        .data(DoneEventData))
 }
 
 #[derive(Debug, Clone, Serialize)]
