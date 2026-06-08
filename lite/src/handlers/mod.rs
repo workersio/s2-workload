@@ -19,7 +19,10 @@ pub fn router() -> axum::Router<Backend> {
 async fn health(State(backend): State<Backend>) -> Response {
     match backend.db_status() {
         Ok(()) => "OK".into_response(),
-        Err(err) => (StatusCode::SERVICE_UNAVAILABLE, format!("{err:?}")).into_response(),
+        Err(err) => {
+            tracing::warn!(?err, "health check failed");
+            (StatusCode::SERVICE_UNAVAILABLE, "Service Unavailable").into_response()
+        }
     }
 }
 

@@ -137,6 +137,14 @@ impl ServerProtocol {
     }
 }
 
+fn redact_key_id(key_id: &str) -> String {
+    let len = key_id.len();
+    if len <= 4 {
+        return "*".repeat(len);
+    }
+    format!("{}…{}", &key_id[..4], &key_id[len - 4..])
+}
+
 fn cli_endpoint(protocol: ServerProtocol, port: u16) -> String {
     format!("{}://localhost:{port}", protocol.scheme())
 }
@@ -295,7 +303,11 @@ async fn init_object_store(
                 std::env::var_os("AWS_SECRET_ACCESS_KEY").and_then(|s| s.into_string().ok()),
             ) {
                 (endpoint, Some(key_id), Some(secret_key)) => {
-                    info!(endpoint, key_id, "using static credentials from env vars");
+                    info!(
+                        endpoint,
+                        key_id = redact_key_id(&key_id),
+                        "using static credentials from env vars"
+                    );
 
                     if let Some(endpoint) = endpoint {
                         if endpoint.starts_with("http://") {
@@ -418,7 +430,7 @@ impl object_store::CredentialProvider for S3CredentialProvider {
                     source: Box::new(e),
                 })?;
         info!(
-            key_id = creds.access_key_id(),
+            key_id = redact_key_id(creds.access_key_id()),
             expiry_s = creds
                 .expiry()
                 .and_then(|t| t.duration_since(SystemTime::now()).ok())
@@ -441,7 +453,7 @@ impl object_store::CredentialProvider for S3CredentialProvider {
 
 #[cfg(test)]
 mod tests {
-    use super::{ServerProtocol, cli_endpoint, cli_env_hint};
+    use super::{ServerProtocol, cli_endpoint, cli_env_hint, redact_key_id};
 
     #[test]
     fn cli_endpoint_uses_localhost_with_explicit_port() {
@@ -466,6 +478,14 @@ mod tests {
                 "export S2_ACCESS_TOKEN=ignored",
             )
         );
+    }
+
+    #[test]
+    fn redact_key_id_shows_first_and_last_four() {
+        assert_eq!(redact_key_id("AKIAIOSFODNN7EXAMPLE"), "AKIA…MPLE");
+        assert_eq!(redact_key_id("ABCD"), "****");
+        assert_eq!(redact_key_id("ABCDE"), "ABCD…BCDE");
+        assert_eq!(redact_key_id(""), "");
     }
 
     #[test]
