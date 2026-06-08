@@ -1053,8 +1053,7 @@ async fn test_list_streams_pagination() {
                 start_after: StreamNameStartAfter::default(),
                 limit: 5.into(),
             }
-            .try_into()
-            .unwrap(),
+            .into(),
         )
         .await
         .expect("Failed to list streams page 1");
@@ -1080,8 +1079,7 @@ async fn test_list_streams_pagination() {
                 start_after: page1.values.last().unwrap().name.clone().into(),
                 limit: 5.into(),
             }
-            .try_into()
-            .unwrap(),
+            .into(),
         )
         .await
         .expect("Failed to list streams page 2");
@@ -1107,8 +1105,7 @@ async fn test_list_streams_pagination() {
                 start_after: page2.values.last().unwrap().name.clone().into(),
                 limit: 5.into(),
             }
-            .try_into()
-            .unwrap(),
+            .into(),
         )
         .await
         .expect("Failed to list streams page 3");
@@ -1163,8 +1160,7 @@ async fn test_list_streams_prefix_filter() {
                 start_after: StreamNameStartAfter::default(),
                 limit: Default::default(),
             }
-            .try_into()
-            .unwrap(),
+            .into(),
         )
         .await
         .expect("Failed to list streams with prefix");

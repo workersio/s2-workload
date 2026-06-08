@@ -509,8 +509,7 @@ async fn test_list_basins_pagination() {
                 start_after: BasinNameStartAfter::default(),
                 limit: 5.into(),
             }
-            .try_into()
-            .unwrap(),
+            .into(),
         )
         .await
         .expect("Failed to list basins page 1");
@@ -535,8 +534,7 @@ async fn test_list_basins_pagination() {
                 start_after: page1.values.last().unwrap().name.clone().into(),
                 limit: 5.into(),
             }
-            .try_into()
-            .unwrap(),
+            .into(),
         )
         .await
         .expect("Failed to list basins page 2");
@@ -561,8 +559,7 @@ async fn test_list_basins_pagination() {
                 start_after: page2.values.last().unwrap().name.clone().into(),
                 limit: 5.into(),
             }
-            .try_into()
-            .unwrap(),
+            .into(),
         )
         .await
         .expect("Failed to list basins page 3");
@@ -597,8 +594,7 @@ async fn test_list_basins_prefix_filter() {
                 start_after: BasinNameStartAfter::default(),
                 limit: Default::default(),
             }
-            .try_into()
-            .unwrap(),
+            .into(),
         )
         .await
         .expect("Failed to list basins with prefix");
@@ -635,8 +631,7 @@ async fn test_list_basins_prefix_with_pagination() {
                 start_after: BasinNameStartAfter::default(),
                 limit: 4.into(),
             }
-            .try_into()
-            .unwrap(),
+            .into(),
         )
         .await
         .expect("Failed to list basins");
@@ -660,8 +655,7 @@ async fn test_list_basins_prefix_with_pagination() {
                 start_after: page1.values.last().unwrap().name.clone().into(),
                 limit: 4.into(),
             }
-            .try_into()
-            .unwrap(),
+            .into(),
         )
         .await
         .expect("Failed to list basins");
@@ -685,8 +679,7 @@ async fn test_list_basins_prefix_with_pagination() {
                 start_after: page2.values.last().unwrap().name.clone().into(),
                 limit: 4.into(),
             }
-            .try_into()
-            .unwrap(),
+            .into(),
         )
         .await
         .expect("Failed to list basins");
