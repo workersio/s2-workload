@@ -13,6 +13,9 @@ use flate2::{Compression, read::GzDecoder, write::GzEncoder};
 use futures_core::Stream;
 use strum::FromRepr;
 
+#[cfg(all(feature = "axum", not(all(feature = "gzip", feature = "zstd"))))]
+compile_error!("s2-api's `axum` feature requires both `gzip` and `zstd` S2S compression");
+
 /*
   REGULAR MESSAGE:
   ┌─────────────┬────────────┬─────────────────────────────┐
@@ -70,33 +73,25 @@ pub enum CompressionAlgorithm {
 }
 
 impl CompressionAlgorithm {
+    #[cfg(feature = "axum")]
     pub fn from_accept_encoding(headers: &http::HeaderMap) -> Self {
-        #[cfg(any(feature = "gzip", feature = "zstd"))]
-        {
-            #[cfg(feature = "gzip")]
-            let mut gzip = false;
-            for header_value in headers.get_all(http::header::ACCEPT_ENCODING) {
-                if let Ok(value) = header_value.to_str() {
-                    for encoding in value.split(',') {
-                        let encoding = encoding.trim().split(';').next().unwrap_or("").trim();
-                        #[cfg(feature = "zstd")]
-                        if encoding.eq_ignore_ascii_case("zstd") {
-                            return Self::Zstd;
-                        }
-                        #[cfg(feature = "gzip")]
-                        if encoding.eq_ignore_ascii_case("gzip") {
-                            gzip = true;
-                        }
+        let mut gzip = false;
+        for header_value in headers.get_all(http::header::ACCEPT_ENCODING) {
+            if let Ok(value) = header_value.to_str() {
+                for encoding in value.split(',') {
+                    let encoding = encoding.trim().split(';').next().unwrap_or("").trim();
+                    if encoding.eq_ignore_ascii_case("zstd") {
+                        return Self::Zstd;
+                    }
+                    if encoding.eq_ignore_ascii_case("gzip") {
+                        gzip = true;
                     }
                 }
             }
-            #[cfg(feature = "gzip")]
-            if gzip {
-                return Self::Gzip;
-            }
         }
-        #[cfg(not(any(feature = "gzip", feature = "zstd")))]
-        let _ = headers;
+        if gzip {
+            return Self::Gzip;
+        }
         Self::None
     }
 }
@@ -417,6 +412,7 @@ mod test {
 
     use bytes::BytesMut;
     use futures::StreamExt;
+    #[cfg(feature = "axum")]
     use http::HeaderValue;
     use proptest::{collection::vec, prelude::*};
     use prost::Message;
@@ -560,7 +556,7 @@ mod test {
     }
 
     #[test]
-    #[cfg(feature = "zstd")]
+    #[cfg(feature = "axum")]
     fn from_accept_encoding_prefers_zstd() {
         let mut headers = http::HeaderMap::new();
         headers.insert(
@@ -573,7 +569,7 @@ mod test {
     }
 
     #[test]
-    #[cfg(feature = "gzip")]
+    #[cfg(feature = "axum")]
     fn from_accept_encoding_falls_back_to_gzip() {
         let mut headers = http::HeaderMap::new();
         headers.insert(
@@ -586,6 +582,7 @@ mod test {
     }
 
     #[test]
+    #[cfg(feature = "axum")]
     fn from_accept_encoding_defaults_to_none() {
         let headers = http::HeaderMap::new();
         let algo = CompressionAlgorithm::from_accept_encoding(&headers);

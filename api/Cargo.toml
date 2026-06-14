@@ -18,7 +18,7 @@ include = [
 
 [features]
 default = ["zstd"]
-axum = ["dep:axum", "dep:sonic-rs", "s2-common/axum"]
+axum = ["dep:axum", "dep:sonic-rs", "gzip", "s2-common/axum", "zstd"]
 utoipa = ["dep:utoipa"]
 codegen = ["dep:prost-build"]
 gzip = ["dep:flate2"]
