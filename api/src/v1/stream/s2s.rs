@@ -1,10 +1,14 @@
+#[cfg(any(feature = "gzip", feature = "zstd"))]
+use std::io::Read;
+#[cfg(feature = "gzip")]
+use std::io::Write;
 use std::{
-    io::{Read, Write},
     pin::Pin,
     task::{Context, Poll},
 };
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
+#[cfg(feature = "gzip")]
 use flate2::{Compression, read::GzDecoder, write::GzEncoder};
 use futures::Stream;
 use strum::FromRepr;
@@ -59,26 +63,41 @@ const FLAG_COMPRESSION_SHIFT: u8 = 5;
 #[repr(u8)]
 pub enum CompressionAlgorithm {
     None = 0,
+    #[cfg(feature = "zstd")]
     Zstd = 1,
+    #[cfg(feature = "gzip")]
     Gzip = 2,
 }
 
 impl CompressionAlgorithm {
     pub fn from_accept_encoding(headers: &http::HeaderMap) -> Self {
-        let mut gzip = false;
-        for header_value in headers.get_all(http::header::ACCEPT_ENCODING) {
-            if let Ok(value) = header_value.to_str() {
-                for encoding in value.split(',') {
-                    let encoding = encoding.trim().split(';').next().unwrap_or("").trim();
-                    if encoding.eq_ignore_ascii_case("zstd") {
-                        return Self::Zstd;
-                    } else if encoding.eq_ignore_ascii_case("gzip") {
-                        gzip = true;
+        #[cfg(any(feature = "gzip", feature = "zstd"))]
+        {
+            #[cfg(feature = "gzip")]
+            let mut gzip = false;
+            for header_value in headers.get_all(http::header::ACCEPT_ENCODING) {
+                if let Ok(value) = header_value.to_str() {
+                    for encoding in value.split(',') {
+                        let encoding = encoding.trim().split(';').next().unwrap_or("").trim();
+                        #[cfg(feature = "zstd")]
+                        if encoding.eq_ignore_ascii_case("zstd") {
+                            return Self::Zstd;
+                        }
+                        #[cfg(feature = "gzip")]
+                        if encoding.eq_ignore_ascii_case("gzip") {
+                            gzip = true;
+                        }
                     }
                 }
             }
+            #[cfg(feature = "gzip")]
+            if gzip {
+                return Self::Gzip;
+            }
         }
-        if gzip { Self::Gzip } else { Self::None }
+        #[cfg(not(any(feature = "gzip", feature = "zstd")))]
+        let _ = headers;
+        Self::None
     }
 }
 
@@ -86,6 +105,30 @@ impl CompressionAlgorithm {
 pub struct CompressedData {
     compression: CompressionAlgorithm,
     payload: Bytes,
+}
+
+#[cfg(any(feature = "gzip", feature = "zstd"))]
+fn decompression_initial_capacity(payload_len: usize) -> usize {
+    payload_len
+        .saturating_mul(2)
+        .clamp(COMPRESSION_THRESHOLD_BYTES, MAX_DECOMPRESSED_PAYLOAD_BYTES)
+}
+
+// Decode at most `MAX_DECOMPRESSED_PAYLOAD_BYTES + 1` bytes.
+#[cfg(any(feature = "gzip", feature = "zstd"))]
+fn read_to_end_limited(mut reader: impl Read, initial_capacity: usize) -> std::io::Result<Bytes> {
+    let mut limited = reader
+        .by_ref()
+        .take((MAX_DECOMPRESSED_PAYLOAD_BYTES + 1) as u64);
+    let mut buf = Vec::with_capacity(initial_capacity);
+    limited.read_to_end(&mut buf)?;
+    if buf.len() > MAX_DECOMPRESSED_PAYLOAD_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "decompressed payload exceeds limit",
+        ));
+    }
+    Ok(Bytes::from(buf.into_boxed_slice()))
 }
 
 impl CompressedData {
@@ -110,57 +153,40 @@ impl CompressedData {
                 payload: data.into(),
             });
         }
-        let mut buf = Vec::with_capacity(data.len());
-        match compression {
-            CompressionAlgorithm::Gzip => {
-                let mut encoder = GzEncoder::new(buf, Compression::default());
-                encoder.write_all(data.as_slice())?;
-                buf = encoder.finish()?;
+        #[cfg(not(any(feature = "gzip", feature = "zstd")))]
+        unreachable!("compression is disabled and none was handled above");
+
+        #[cfg(any(feature = "gzip", feature = "zstd"))]
+        {
+            let mut buf = Vec::with_capacity(data.len());
+            match compression {
+                #[cfg(feature = "gzip")]
+                CompressionAlgorithm::Gzip => {
+                    let mut encoder = GzEncoder::new(buf, Compression::default());
+                    encoder.write_all(data.as_slice())?;
+                    buf = encoder.finish()?;
+                }
+                #[cfg(feature = "zstd")]
+                CompressionAlgorithm::Zstd => {
+                    zstd::stream::copy_encode(data.as_slice(), &mut buf, 0)?;
+                }
+                CompressionAlgorithm::None => unreachable!("handled above"),
+            };
+            let payload = Bytes::from(buf.into_boxed_slice());
+            if payload.len() > MAX_FRAME_PAYLOAD_BYTES {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "compressed payload exceeds frame limit",
+                ));
             }
-            CompressionAlgorithm::Zstd => {
-                zstd::stream::copy_encode(data.as_slice(), &mut buf, 0)?;
-            }
-            CompressionAlgorithm::None => unreachable!("handled above"),
-        };
-        let payload = Bytes::from(buf.into_boxed_slice());
-        if payload.len() > MAX_FRAME_PAYLOAD_BYTES {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "compressed payload exceeds frame limit",
-            ));
+            Ok(Self {
+                compression,
+                payload,
+            })
         }
-        Ok(Self {
-            compression,
-            payload,
-        })
     }
 
     fn decompressed(self) -> std::io::Result<Bytes> {
-        let initial_capacity = self
-            .payload
-            .len()
-            .saturating_mul(2)
-            .clamp(COMPRESSION_THRESHOLD_BYTES, MAX_DECOMPRESSED_PAYLOAD_BYTES);
-
-        // Decode at most `MAX_DECOMPRESSED_PAYLOAD_BYTES + 1` bytes
-        fn read_to_end_limited(
-            mut reader: impl Read,
-            initial_capacity: usize,
-        ) -> std::io::Result<Bytes> {
-            let mut limited = reader
-                .by_ref()
-                .take((MAX_DECOMPRESSED_PAYLOAD_BYTES + 1) as u64);
-            let mut buf = Vec::with_capacity(initial_capacity);
-            limited.read_to_end(&mut buf)?;
-            if buf.len() > MAX_DECOMPRESSED_PAYLOAD_BYTES {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    "decompressed payload exceeds limit",
-                ));
-            }
-            Ok(Bytes::from(buf.into_boxed_slice()))
-        }
-
         match self.compression {
             CompressionAlgorithm::None => {
                 if self.payload.len() > MAX_DECOMPRESSED_PAYLOAD_BYTES {
@@ -171,11 +197,15 @@ impl CompressedData {
                 }
                 Ok(self.payload)
             }
+            #[cfg(feature = "gzip")]
             CompressionAlgorithm::Gzip => {
+                let initial_capacity = decompression_initial_capacity(self.payload.len());
                 let mut decoder = GzDecoder::new(&self.payload[..]);
                 read_to_end_limited(&mut decoder, initial_capacity)
             }
+            #[cfg(feature = "zstd")]
             CompressionAlgorithm::Zstd => {
+                let initial_capacity = decompression_initial_capacity(self.payload.len());
                 let mut decoder = zstd::stream::Decoder::new(&self.payload[..])?;
                 read_to_end_limited(&mut decoder, initial_capacity)
             }
@@ -429,12 +459,22 @@ mod test {
             .ok_or_else(|| io::Error::new(io::ErrorKind::UnexpectedEof, "frame incomplete"))
     }
 
+    fn compression_algorithms() -> Vec<CompressionAlgorithm> {
+        let algorithms = vec![CompressionAlgorithm::None];
+        #[cfg(any(feature = "gzip", feature = "zstd"))]
+        let algorithms = {
+            let mut algorithms = algorithms;
+            #[cfg(feature = "gzip")]
+            algorithms.push(CompressionAlgorithm::Gzip);
+            #[cfg(feature = "zstd")]
+            algorithms.push(CompressionAlgorithm::Zstd);
+            algorithms
+        };
+        algorithms
+    }
+
     fn compression_strategy() -> impl proptest::strategy::Strategy<Value = CompressionAlgorithm> {
-        prop_oneof![
-            Just(CompressionAlgorithm::None),
-            Just(CompressionAlgorithm::Gzip),
-            Just(CompressionAlgorithm::Zstd),
-        ]
+        proptest::sample::select(compression_algorithms())
     }
 
     fn chunk_bytes(data: &Bytes, pattern: &[usize]) -> Vec<Bytes> {
@@ -520,6 +560,7 @@ mod test {
     }
 
     #[test]
+    #[cfg(feature = "zstd")]
     fn from_accept_encoding_prefers_zstd() {
         let mut headers = http::HeaderMap::new();
         headers.insert(
@@ -532,6 +573,7 @@ mod test {
     }
 
     #[test]
+    #[cfg(feature = "gzip")]
     fn from_accept_encoding_falls_back_to_gzip() {
         let mut headers = http::HeaderMap::new();
         headers.insert(
@@ -663,6 +705,7 @@ mod test {
     }
 
     #[test]
+    #[cfg(feature = "gzip")]
     fn compressed_data_round_trip_gzip() {
         let payload = vec![42; 1_200_000];
         let proto = TestProto::new(payload.clone());
@@ -682,6 +725,7 @@ mod test {
     }
 
     #[test]
+    #[cfg(feature = "zstd")]
     fn compressed_data_round_trip_zstd() {
         let payload = vec![7; 1_100_000];
         let proto = TestProto::new(payload.clone());
@@ -701,13 +745,18 @@ mod test {
     }
 
     #[test]
+    #[cfg(any(feature = "gzip", feature = "zstd"))]
     fn decompression_rejects_payloads_exceeding_limit() {
         let payload = vec![0; MAX_DECOMPRESSED_PAYLOAD_BYTES + 1];
         let proto = TestProto::new(payload);
         let encoded = proto.encode_to_vec();
 
-        for algo in [CompressionAlgorithm::Gzip, CompressionAlgorithm::Zstd] {
+        for algo in compression_algorithms()
+            .into_iter()
+            .filter(|algo| *algo != CompressionAlgorithm::None)
+        {
             let compressed = match algo {
+                #[cfg(feature = "gzip")]
                 CompressionAlgorithm::Gzip => {
                     let mut out = Vec::new();
                     let mut encoder = GzEncoder::new(&mut out, Compression::default());
@@ -715,6 +764,7 @@ mod test {
                     encoder.finish().unwrap();
                     out
                 }
+                #[cfg(feature = "zstd")]
                 CompressionAlgorithm::Zstd => {
                     let mut out = Vec::new();
                     zstd::stream::copy_encode(encoded.as_slice(), &mut out, 0).unwrap();
@@ -739,12 +789,19 @@ mod test {
     }
 
     #[test]
+    #[cfg(any(feature = "gzip", feature = "zstd"))]
     fn compress_rejects_payloads_exceeding_decompressed_limit() {
         let payload = vec![0; MAX_DECOMPRESSED_PAYLOAD_BYTES + 1];
         let proto = TestProto::new(payload);
 
-        let err = CompressedData::compress(CompressionAlgorithm::Gzip, proto.encode_to_vec())
-            .expect_err("should fail");
+        let err = CompressedData::compress(
+            compression_algorithms()
+                .into_iter()
+                .find(|algo| *algo != CompressionAlgorithm::None)
+                .expect("compression feature enabled"),
+            proto.encode_to_vec(),
+        )
+        .expect_err("should fail");
         assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
         assert!(
             err.to_string()
@@ -761,6 +818,7 @@ mod test {
     }
 
     #[test]
+    #[cfg(any(feature = "gzip", feature = "zstd"))]
     fn compress_rejects_incompressible_payload_that_exceeds_frame_limit_after_compression() {
         let mut payload = vec![0u8; MAX_DECOMPRESSED_PAYLOAD_BYTES];
         let mut x = 0x1234_5678u32;
@@ -771,7 +829,10 @@ mod test {
             *byte = (x & 0xFF) as u8;
         }
 
-        for algo in [CompressionAlgorithm::Gzip, CompressionAlgorithm::Zstd] {
+        for algo in compression_algorithms()
+            .into_iter()
+            .filter(|algo| *algo != CompressionAlgorithm::None)
+        {
             let err = CompressedData::compress(algo, payload.clone()).expect_err("should fail");
             assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
             assert!(

@@ -871,12 +871,14 @@ impl BaseClient {
         );
         default_headers.insert(http::header::USER_AGENT, config.user_agent.clone());
         match config.compression {
+            #[cfg(feature = "gzip")]
             Compression::Gzip => {
                 default_headers.insert(
                     http::header::ACCEPT_ENCODING,
                     HeaderValue::from_static("gzip"),
                 );
             }
+            #[cfg(feature = "zstd")]
             Compression::Zstd => {
                 default_headers.insert(
                     http::header::ACCEPT_ENCODING,
