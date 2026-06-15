@@ -1279,51 +1279,36 @@ mod tests {
         assert!(!ClientError::Others("test".into()).has_no_side_effects());
     }
 
-    #[test]
-    fn accept_encoding_is_not_set_without_compression() {
-        assert!(accept_encoding_header_value(Compression::None).is_none());
+    fn request_accept_encoding(compression: Compression) -> Option<String> {
+        let config = S2Config::new("test-token".to_owned()).with_compression(compression);
+        let connector = hyper_util::client::legacy::connect::HttpConnector::new();
+        let client = BaseClient::init_with_connector(&config, connector).expect("client init");
+        let mut request = client
+            .get("http://localhost/v1/test".parse().unwrap())
+            .build()
+            .unwrap();
+
+        request
+            .headers_mut()
+            .get(ACCEPT_ENCODING)
+            .map(|value| value.to_str().unwrap().to_owned())
+    }
+
+    #[tokio::test]
+    async fn base_client_leaves_accept_encoding_unset_without_compression() {
+        assert_eq!(request_accept_encoding(Compression::None), None);
     }
 
     #[cfg(all(feature = "gzip", feature = "zstd"))]
-    #[test]
-    fn accept_encoding_prefers_zstd_when_all_codecs_are_enabled() {
+    #[tokio::test]
+    async fn base_client_prefers_zstd_in_accept_encoding() {
         assert_eq!(
-            accept_encoding_header_value(Compression::Gzip)
-                .unwrap()
-                .to_str()
-                .unwrap(),
-            "zstd, gzip"
+            request_accept_encoding(Compression::Gzip).as_deref(),
+            Some("zstd, gzip")
         );
         assert_eq!(
-            accept_encoding_header_value(Compression::Zstd)
-                .unwrap()
-                .to_str()
-                .unwrap(),
-            "zstd, gzip"
-        );
-    }
-
-    #[cfg(all(feature = "gzip", not(feature = "zstd")))]
-    #[test]
-    fn accept_encoding_uses_gzip_when_it_is_the_only_codec_enabled() {
-        assert_eq!(
-            accept_encoding_header_value(Compression::Gzip)
-                .unwrap()
-                .to_str()
-                .unwrap(),
-            "gzip"
-        );
-    }
-
-    #[cfg(all(feature = "zstd", not(feature = "gzip")))]
-    #[test]
-    fn accept_encoding_uses_zstd_when_it_is_the_only_codec_enabled() {
-        assert_eq!(
-            accept_encoding_header_value(Compression::Zstd)
-                .unwrap()
-                .to_str()
-                .unwrap(),
-            "zstd"
+            request_accept_encoding(Compression::Zstd).as_deref(),
+            Some("zstd, gzip")
         );
     }
 
