@@ -1,0 +1,22 @@
+[package]
+name = "s2-testcontainers"
+version = "0.36.7"
+description = "Testcontainers helpers for the S2 Docker image"
+edition.workspace = true
+license.workspace = true
+repository = "https://github.com/s2-streamstore/s2/tree/main/testcontainers"
+homepage.workspace = true
+documentation = "https://docs.rs/s2-testcontainers/latest/s2_testcontainers/"
+keywords = ["s2", "testcontainers", "integration-testing", "streams"]
+categories = ["development-tools::testing", "database"]
+readme = "README.md"
+
+[dependencies]
+reqwest = { workspace = true }
+s2-sdk = { workspace = true }
+testcontainers = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["time"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

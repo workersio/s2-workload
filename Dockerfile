@@ -10,6 +10,7 @@ RUN --mount=type=bind,source=api,target=/build/api \
     --mount=type=bind,source=resource-spec,target=/build/resource-spec \
     --mount=type=bind,source=sdk,target=/build/sdk \
     --mount=type=bind,source=storage,target=/build/storage \
+    --mount=type=bind,source=testcontainers,target=/build/testcontainers \
     --mount=type=bind,source=cli,target=/build/cli \
     --mount=type=bind,source=Cargo.toml,target=/build/Cargo.toml \
     --mount=type=bind,source=Cargo.lock,target=/build/Cargo.lock \
