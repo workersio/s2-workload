@@ -4,8 +4,10 @@ use bytes::{Buf, BufMut, Bytes};
 use s2_common::{
     deep_size::DeepSize,
     encryption::EncryptionAlgorithm,
-    record::{CommandRecord, Metered, MeteredSize, Record, SeqNum, Sequenced},
+    record::{Metered, MeteredSize, Record, SeqNum, Sequenced},
 };
+#[cfg(test)]
+use s2_common::record::CommandRecord;
 
 use super::{
     codec::{StoredRecordDecodeError, WireEncode, decode_command_record, decode_envelope_record},
@@ -169,26 +171,6 @@ impl MeteredSize for StoredRecord {
 impl From<Record> for StoredRecord {
     fn from(value: Record) -> Self {
         Self::Plaintext(value)
-    }
-}
-
-pub fn decode_if_command_record(
-    record: &[u8],
-) -> Result<Option<CommandRecord>, StoredRecordDecodeError> {
-    if record.is_empty() {
-        return Err(StoredRecordDecodeError::Truncated("MagicByte"));
-    }
-    let magic_byte = MagicByte::try_from(record[0])
-        .map_err(|msg| StoredRecordDecodeError::InvalidValue("MagicByte", msg))?;
-    match magic_byte.record_type {
-        RecordType::Command => {
-            let offset = 1 + magic_byte.metered_size_varlen as usize;
-            if record.len() < offset {
-                return Err(StoredRecordDecodeError::Truncated("MeteredSize"));
-            }
-            Ok(Some(decode_command_record(&record[offset..])?))
-        }
-        RecordType::Envelope | RecordType::EncryptedEnvelope => Ok(None),
     }
 }
 
