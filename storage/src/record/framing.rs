@@ -1,13 +1,13 @@
 #[cfg(test)]
 use bytes::BytesMut;
 use bytes::{Buf, BufMut, Bytes};
+#[cfg(test)]
+use s2_common::record::CommandRecord;
 use s2_common::{
     deep_size::DeepSize,
     encryption::EncryptionAlgorithm,
     record::{Metered, MeteredSize, Record, SeqNum, Sequenced},
 };
-#[cfg(test)]
-use s2_common::record::CommandRecord;
 
 use super::{
     codec::{StoredRecordDecodeError, WireEncode, decode_command_record, decode_envelope_record},
