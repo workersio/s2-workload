@@ -87,11 +87,10 @@ impl ServiceError {
             ServiceError::ProtoRejection(e) => standard(ErrorCode::BadProto, e.to_string()),
             ServiceError::AppendInputStream(e) => match e {
                 AppendInputStreamError::FrameDecode(e) => {
-                    if e.kind() == std::io::ErrorKind::TimedOut {
-                        standard(ErrorCode::RequestTimeout, e.to_string())
-                    } else {
-                        standard(ErrorCode::BadFrame, e.to_string())
-                    }
+                    standard(ErrorCode::BadFrame, e.to_string())
+                }
+                AppendInputStreamError::FrameTimeout => {
+                    standard(ErrorCode::RequestTimeout, e.to_string())
                 }
                 AppendInputStreamError::Validation(e) => {
                     standard(ErrorCode::Invalid, e.to_string())

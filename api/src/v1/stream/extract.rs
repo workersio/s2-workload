@@ -222,6 +222,7 @@ fn decode_s2s_append_inputs(
                     state.frame_deadline = if state.buffer.is_empty() {
                         None
                     } else {
+                        // Buffered trailing bytes start the next frame's deadline.
                         Some(Instant::now() + state.frame_timeout)
                     };
                     let input = data.try_into_proto::<proto::AppendInput>()?;
@@ -268,10 +269,7 @@ fn decode_s2s_append_inputs(
 }
 
 fn s2s_frame_timeout() -> AppendInputStreamError {
-    AppendInputStreamError::FrameDecode(io::Error::new(
-        io::ErrorKind::TimedOut,
-        "S2S frame read timed out",
-    ))
+    AppendInputStreamError::FrameTimeout
 }
 
 #[cfg(test)]
@@ -282,6 +280,23 @@ mod tests {
     use futures_util::{StreamExt as _, pin_mut, stream};
 
     use super::*;
+
+    fn encoded_append_frame() -> Bytes {
+        s2s::SessionMessage::regular(
+            s2s::CompressionAlgorithm::None,
+            &proto::AppendInput {
+                records: vec![proto::AppendRecord {
+                    timestamp: None,
+                    headers: vec![],
+                    body: Bytes::from_static(b"x"),
+                }],
+                match_seq_num: None,
+                fencing_token: None,
+            },
+        )
+        .unwrap()
+        .encode()
+    }
 
     #[test]
     fn s2s_frame_read_timeout_defaults_to_request_timeout() {
@@ -325,10 +340,38 @@ mod tests {
         tokio::time::advance(Duration::from_secs(5)).await;
         let err = next.await.expect("stream item").expect_err("timeout");
         match err {
-            AppendInputStreamError::FrameDecode(err) => {
-                assert_eq!(err.kind(), io::ErrorKind::TimedOut);
-                assert_eq!(err.to_string(), "S2S frame read timed out");
+            AppendInputStreamError::FrameTimeout => {}
+            AppendInputStreamError::FrameDecode(err) => panic!("unexpected decode error: {err}"),
+            AppendInputStreamError::Validation(err) => {
+                panic!("unexpected validation error: {err}");
             }
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn s2s_append_decode_times_out_buffered_next_frame() {
+        let mut chunk = BytesMut::from(encoded_append_frame().as_ref());
+        chunk.extend_from_slice(&[0, 0, 2]);
+        let body =
+            stream::once(async { Ok::<_, io::Error>(chunk.freeze()) }).chain(stream::pending());
+        let inputs = decode_s2s_append_inputs(body, S2sFrameReadTimeout::default().get());
+        pin_mut!(inputs);
+
+        inputs
+            .next()
+            .await
+            .expect("first stream item")
+            .expect("first frame");
+
+        tokio::time::advance(Duration::from_secs(5)).await;
+        let err = inputs
+            .next()
+            .await
+            .expect("second stream item")
+            .expect_err("timeout");
+        match err {
+            AppendInputStreamError::FrameTimeout => {}
+            AppendInputStreamError::FrameDecode(err) => panic!("unexpected decode error: {err}"),
             AppendInputStreamError::Validation(err) => {
                 panic!("unexpected validation error: {err}");
             }
