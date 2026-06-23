@@ -191,10 +191,8 @@ where
     }
 }
 
-type S2sBodyStream = Pin<Box<dyn Stream<Item = Result<Bytes, io::Error>> + Send>>;
-
-struct S2sAppendDecodeState {
-    body: S2sBodyStream,
+struct S2sAppendDecodeState<S> {
+    body: Pin<Box<S>>,
     decoder: s2s::FrameDecoder,
     buffer: BytesMut,
     frame_deadline: Option<Instant>,
@@ -259,7 +257,7 @@ fn decode_s2s_append_inputs(
     })
 }
 
-impl S2sAppendDecodeState {
+impl<S> S2sAppendDecodeState<S> {
     fn arm_or_clear_frame_deadline(&mut self) {
         if self.buffer.is_empty() {
             self.frame_deadline = None;
