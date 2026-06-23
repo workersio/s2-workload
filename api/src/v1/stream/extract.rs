@@ -199,7 +199,6 @@ struct S2sAppendDecodeState {
     body: S2sBodyStream,
     decoder: s2s::FrameDecoder,
     buffer: BytesMut,
-    frame_started_at: Option<Instant>,
     frame_deadline: Option<Instant>,
     frame_timeout: Duration,
 }
@@ -212,7 +211,6 @@ fn decode_s2s_append_inputs(
         body: Box::pin(body),
         decoder: s2s::FrameDecoder,
         buffer: BytesMut::new(),
-        frame_started_at: None,
         frame_deadline: None,
         frame_timeout,
     };
@@ -266,7 +264,6 @@ fn decode_s2s_append_inputs(
 impl S2sAppendDecodeState {
     fn arm_or_clear_frame_deadline(&mut self) {
         if self.buffer.is_empty() {
-            self.frame_started_at = None;
             self.frame_deadline = None;
         } else {
             self.arm_frame_deadline();
@@ -282,16 +279,12 @@ impl S2sAppendDecodeState {
     fn arm_frame_deadline(&mut self) {
         let now = Instant::now();
         // Buffered trailing bytes start the next frame's deadline.
-        self.frame_started_at = Some(now);
         self.frame_deadline = Some(now + self.frame_timeout);
     }
 
     fn s2s_frame_timeout(&self) -> AppendInputStreamError {
         AppendInputStreamError::FrameTimeout {
             buffered_bytes: self.buffer.len(),
-            elapsed: self
-                .frame_started_at
-                .map_or(self.frame_timeout, |started_at| started_at.elapsed()),
         }
     }
 }
@@ -364,12 +357,8 @@ mod tests {
         tokio::time::advance(Duration::from_secs(5)).await;
         let err = next.await.expect("stream item").expect_err("timeout");
         match err {
-            AppendInputStreamError::FrameTimeout {
-                buffered_bytes,
-                elapsed,
-            } => {
+            AppendInputStreamError::FrameTimeout { buffered_bytes } => {
                 assert_eq!(buffered_bytes, 3);
-                assert_eq!(elapsed, Duration::from_secs(5));
             }
             AppendInputStreamError::FrameDecode(err) => panic!("unexpected decode error: {err}"),
             AppendInputStreamError::Validation(err) => {
@@ -400,12 +389,8 @@ mod tests {
             .expect("second stream item")
             .expect_err("timeout");
         match err {
-            AppendInputStreamError::FrameTimeout {
-                buffered_bytes,
-                elapsed,
-            } => {
+            AppendInputStreamError::FrameTimeout { buffered_bytes } => {
                 assert_eq!(buffered_bytes, 3);
-                assert_eq!(elapsed, Duration::from_secs(5));
             }
             AppendInputStreamError::FrameDecode(err) => panic!("unexpected decode error: {err}"),
             AppendInputStreamError::Validation(err) => {
