@@ -26,8 +26,6 @@ use crate::{
     v1::stream::sse::LastEventId,
 };
 
-const DEFAULT_S2S_FRAME_READ_TIMEOUT: Duration = Duration::from_secs(5);
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct S2sFrameReadTimeout(Duration);
 
@@ -43,7 +41,7 @@ impl S2sFrameReadTimeout {
 
 impl Default for S2sFrameReadTimeout {
     fn default() -> Self {
-        Self(DEFAULT_S2S_FRAME_READ_TIMEOUT)
+        Self(Duration::from_secs(5))
     }
 }
 
