@@ -80,7 +80,7 @@ mod tests {
             body in prop::collection::vec(any::<u8>(), 0..200),
         ) {
             use s2_common::record::{Header, MeteredExt as _, MeteredSize, Record};
-            use s2_storage::record::{StoredRecord, decode_record};
+            use s2_storage::record::{StoredRecord, decode_stored_record};
 
             let header_name = Bytes::from(header_name);
             let header_value = Bytes::from(header_value);
@@ -98,7 +98,12 @@ mod tests {
             let bytes =
                 super::ser_value(StoredRecord::from(metered_record.into_inner()).metered().as_ref());
             let decoded = super::deser_value(bytes).unwrap();
-            let decoded = decode_record(super::ser_value(decoded.as_ref())).unwrap();
+            let decoded_stored = decode_stored_record(super::ser_value(decoded.as_ref())).unwrap();
+            let decoded_metered_size = decoded_stored.metered_size();
+            let StoredRecord::Plaintext(decoded_inner) = decoded_stored.into_inner() else {
+                panic!("expected plaintext record");
+            };
+            let decoded = Metered::with_size(decoded_metered_size, decoded_inner);
 
             prop_assert_eq!(original_size, decoded.metered_size());
             let (decoded_headers, decoded_body) = decoded.into_inner().into_parts();

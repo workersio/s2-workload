@@ -1,9 +1,7 @@
-#[cfg(test)]
-use bytes::BytesMut;
 use bytes::{Buf, BufMut, Bytes};
 use s2_common::{
     deep_size::DeepSize,
-    record::{CommandRecord, Metered, MeteredSize, Record, SeqNum, Sequenced},
+    record::{Metered, MeteredSize, Record, SeqNum, Sequenced},
 };
 
 use super::{
@@ -36,28 +34,6 @@ impl TryFrom<u8> for RecordType {
 struct MagicByte {
     record_type: RecordType,
     metered_size_varlen: u8,
-}
-
-/// Read bytes to u32 in big-endian order.
-fn read_vint_u32_be(bytes: &[u8]) -> u32 {
-    if bytes.len() > size_of::<u32>() || bytes.is_empty() {
-        panic!("invalid variable int bytes = {} len", bytes.len())
-    }
-    let mut acc: u32 = 0;
-    for &byte in bytes {
-        acc = (acc << 8) | byte as u32;
-    }
-    acc
-}
-
-pub fn try_metered_size(record_bytes: &[u8]) -> Result<u32, &'static str> {
-    let magic_byte_u8 = *record_bytes.first().ok_or("byte range is empty")?;
-    let magic_byte = MagicByte::try_from(magic_byte_u8)?;
-    Ok(read_vint_u32_be(
-        record_bytes
-            .get(1..1 + magic_byte.metered_size_varlen as usize)
-            .ok_or("byte range doesn't include bytes for metered size")?,
-    ))
 }
 
 impl TryFrom<u8> for MagicByte {
@@ -164,36 +140,8 @@ impl From<Record> for StoredRecord {
     }
 }
 
-pub fn decode_if_command_record(
-    record: &[u8],
-) -> Result<Option<CommandRecord>, StoredRecordDecodeError> {
-    if record.is_empty() {
-        return Err(StoredRecordDecodeError::Truncated("MagicByte"));
-    }
-    let magic_byte = MagicByte::try_from(record[0])
-        .map_err(|msg| StoredRecordDecodeError::InvalidValue("MagicByte", msg))?;
-    match magic_byte.record_type {
-        RecordType::Command => {
-            let offset = 1 + magic_byte.metered_size_varlen as usize;
-            if record.len() < offset {
-                return Err(StoredRecordDecodeError::Truncated("MeteredSize"));
-            }
-            Ok(Some(decode_command_record(&record[offset..])?))
-        }
-        RecordType::Envelope | RecordType::EncryptedEnvelope => Ok(None),
-    }
-}
-
 pub fn encode_stored_record(record: Metered<&StoredRecord>) -> Bytes {
     record.to_bytes()
-}
-
-pub fn stored_record_encoded_size(record: Metered<&StoredRecord>) -> usize {
-    record.encoded_size()
-}
-
-pub fn encode_stored_record_into(record: Metered<&StoredRecord>, buf: &mut impl BufMut) {
-    record.encode_into(buf);
 }
 
 impl WireEncode for Metered<&StoredRecord> {
@@ -224,7 +172,6 @@ fn magic_byte(record: &Metered<&StoredRecord>) -> MagicByte {
     }
 }
 
-pub type StoredSequencedBytes = Sequenced<Bytes>;
 pub type StoredSequencedRecord = Sequenced<StoredRecord>;
 
 pub fn decode_stored_record(
@@ -254,25 +201,14 @@ pub fn decode_stored_record(
     Ok(Metered::with_size(metered_size, record))
 }
 
-pub fn decode_record(buf: Bytes) -> Result<Metered<Record>, StoredRecordDecodeError> {
-    let stored = decode_stored_record(buf)?;
-    let metered_size = stored.metered_size();
-    match stored.into_inner() {
-        StoredRecord::Plaintext(record) => Ok(record),
-        StoredRecord::Encrypted { .. } => Err(StoredRecordDecodeError::InvalidValue(
-            "RecordType",
-            "encrypted envelope requires decryption",
-        )),
-    }
-    .map(|record| Metered::with_size(metered_size, record))
-}
-
 #[cfg(test)]
 mod test {
+    use bytes::BytesMut;
     use proptest::prelude::*;
     use rstest::rstest;
     use s2_common::record::{
-        EnvelopeRecord, Header, MAX_FENCING_TOKEN_LENGTH, MeteredExt, StreamPosition, Timestamp,
+        CommandRecord, EnvelopeRecord, Header, MAX_FENCING_TOKEN_LENGTH, MeteredExt, StreamPosition,
+        Timestamp,
     };
 
     use super::*;
@@ -378,7 +314,12 @@ mod test {
                 encode_stored_record(StoredRecord::from(record.clone()).metered().as_ref());
             let legacy_record = legacy_plaintext_bytes(&record);
             prop_assert_eq!(encoded_record.as_ref(), legacy_record.as_ref());
-            let decoded_record = decode_record(encoded_record).unwrap();
+            let decoded_stored = decode_stored_record(encoded_record).unwrap();
+            let decoded_metered_size = decoded_stored.metered_size();
+            let StoredRecord::Plaintext(decoded_inner) = decoded_stored.into_inner() else {
+                panic!("expected plaintext record");
+            };
+            let decoded_record = Metered::with_size(decoded_metered_size, decoded_inner);
             prop_assert_eq!(&decoded_record, &metered_record);
             let sequenced = decoded_record.sequenced(StreamPosition { seq_num, timestamp });
             let (position, sequenced_record) = sequenced.into_parts();
@@ -398,7 +339,8 @@ mod test {
             let encoded_record =
                 encode_stored_record(StoredRecord::from(record.clone()).metered().as_ref());
             assert_eq!(record.metered_size(), semantic_metered_size(&record));
-            assert_eq!(record.metered_size(), try_metered_size(encoded_record.as_ref()).unwrap() as usize);
+            let decoded = decode_stored_record(encoded_record).unwrap();
+            assert_eq!(record.metered_size(), decoded.metered_size());
         }
     );
 
@@ -410,8 +352,13 @@ mod test {
             let encoded_record =
                 encode_stored_record(StoredRecord::from(record.clone()).metered().as_ref());
             let expected_metered = semantic_metered_size(&record);
-            let wire_metered = try_metered_size(encoded_record.as_ref()).unwrap() as usize;
-            let decoded_record = decode_record(encoded_record).unwrap();
+            let decoded_stored = decode_stored_record(encoded_record).unwrap();
+            let wire_metered = decoded_stored.metered_size();
+            let decoded_metered_size = decoded_stored.metered_size();
+            let StoredRecord::Plaintext(decoded_inner) = decoded_stored.into_inner() else {
+                panic!("expected plaintext record");
+            };
+            let decoded_record = Metered::with_size(decoded_metered_size, decoded_inner);
 
             assert_eq!(record.metered_size(), expected_metered);
             assert_eq!(record.metered_size(), wire_metered);
@@ -455,7 +402,7 @@ mod test {
     fn metered_record_truncated_after_magic_byte_returns_error() {
         // Magic byte: Envelope (0b0000_0010), metered_size_varlen = 1 -> expects 1 more byte.
         let truncated = Bytes::from_static(&[0b0000_0010]);
-        let result = decode_record(truncated);
+        let result = decode_stored_record(truncated);
         assert_eq!(
             result,
             Err(StoredRecordDecodeError::Truncated("MeteredSize"))
@@ -505,14 +452,9 @@ mod test {
         #[case] expected: &[u8],
     ) {
         let metered_record = record.clone().metered();
-        let encoded_size = stored_record_encoded_size(metered_record.as_ref());
         let encoded = encode_stored_record(metered_record.as_ref());
-        let mut encoded_into = BytesMut::with_capacity(encoded_size);
-        encode_stored_record_into(metered_record.as_ref(), &mut encoded_into);
 
-        assert_eq!(encoded.len(), encoded_size);
         assert_eq!(encoded.as_ref(), expected);
-        assert_eq!(encoded_into.as_ref(), expected);
         assert_eq!(decode_stored_record(encoded).unwrap().into_inner(), record);
     }
 
@@ -548,7 +490,7 @@ mod test {
     }
 
     #[test]
-    fn decode_record_preserves_encoded_metered_size_prefix() {
+    fn decode_stored_record_preserves_encoded_metered_size_prefix_for_plaintext() {
         let record = Record::Envelope(
             EnvelopeRecord::try_from_parts(vec![], Bytes::from_static(b"hello")).unwrap(),
         );
@@ -556,19 +498,13 @@ mod test {
             encode_stored_record(StoredRecord::from(record.clone()).metered().as_ref()).to_vec();
         encoded[1] = 99;
 
-        let decoded = decode_record(Bytes::from(encoded)).unwrap();
+        let decoded = decode_stored_record(Bytes::from(encoded)).unwrap();
 
         assert_eq!(decoded.metered_size(), 99);
-        assert_eq!(decoded.into_inner(), record);
+        assert_eq!(
+            decoded.into_inner(),
+            StoredRecord::Plaintext(record)
+        );
     }
 
-    #[test]
-    fn test_read_varint() {
-        let data = [0u8, 0, 0, 1, 0, 0, 0];
-
-        assert_eq!(read_vint_u32_be(&data[..4]), 1u32);
-        assert_eq!(read_vint_u32_be(&data[2..5]), 2u32.pow(8));
-        assert_eq!(read_vint_u32_be(&data[2..6]), 2u32.pow(16));
-        assert_eq!(read_vint_u32_be(&data[3..]), 2u32.pow(24));
-    }
 }
