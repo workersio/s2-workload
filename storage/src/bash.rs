@@ -47,12 +47,6 @@ impl AsRef<[u8]> for Bash {
     }
 }
 
-impl From<Bash> for [u8; Bash::LEN] {
-    fn from(bash: Bash) -> Self {
-        bash.0.into()
-    }
-}
-
 impl From<[u8; Bash::LEN]> for Bash {
     fn from(bytes: [u8; Bash::LEN]) -> Self {
         Self(blake3::Hash::from_bytes(bytes))
