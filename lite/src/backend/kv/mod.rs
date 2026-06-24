@@ -48,7 +48,6 @@ pub enum KeyType {
     StreamDeleteOnEmptyDeadline = 10,
 }
 
-
 /// Shared serializer for keys of the form `[KeyType][StreamId]`.
 pub fn ser_stream_id_key(key_type: KeyType, stream_id: StreamId) -> Bytes {
     let key_len = 1 + StreamId::LEN;
@@ -184,5 +183,3 @@ mod proptest_strategies {
         "[a-zA-Z0-9_-]{1,100}".prop_map(|s| StreamName::from_str(&s).unwrap())
     }
 }
-
-
