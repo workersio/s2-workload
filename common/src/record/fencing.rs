@@ -87,5 +87,3 @@ impl Deref for FencingToken {
         &self.0
     }
 }
-
-
