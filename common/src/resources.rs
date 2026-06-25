@@ -30,10 +30,6 @@ pub struct ListLimit(NonZeroUsize);
 impl ListLimit {
     pub const MAX: ListLimit = Self(NonZeroUsize::new(1000).unwrap());
 
-    pub fn get(&self) -> NonZeroUsize {
-        self.0
-    }
-
     pub fn as_usize(&self) -> usize {
         self.0.get()
     }
