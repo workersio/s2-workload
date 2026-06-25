@@ -38,7 +38,6 @@ struct MagicByte {
     metered_size_varlen: u8,
 }
 
-
 impl TryFrom<u8> for MagicByte {
     type Error = &'static str;
 
@@ -143,11 +142,9 @@ impl From<Record> for StoredRecord {
     }
 }
 
-
 pub fn encode_stored_record(record: Metered<&StoredRecord>) -> Bytes {
     record.to_bytes()
 }
-
 
 impl WireEncode for Metered<&StoredRecord> {
     fn encoded_size(&self) -> usize {
@@ -206,7 +203,6 @@ pub fn decode_stored_record(
     };
     Ok(Metered::with_size(metered_size, record))
 }
-
 
 #[cfg(test)]
 mod test {
@@ -409,5 +405,4 @@ mod test {
         assert_eq!(decoded.metered_size(), 99);
         assert_eq!(decoded.into_inner(), record);
     }
-
 }
