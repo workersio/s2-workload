@@ -5101,6 +5101,7 @@ dependencies = [
  "serde_json",
  "serial_test",
  "strum",
+ "tabled",
  "tempfile",
  "thiserror 2.0.18",
  "tikv-jemallocator",

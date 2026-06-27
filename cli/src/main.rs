@@ -39,6 +39,10 @@ use s2_sdk::{
     },
 };
 use strum::VariantNames;
+use tabled::{
+    builder::Builder,
+    settings::{Alignment, Modify, Style, object::Columns},
+};
 use tokio::{io::AsyncWriteExt, select};
 use tracing_subscriber::{fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt};
 use types::{
@@ -852,52 +856,23 @@ fn format_compact_table(
     rows: &[Vec<String>],
     right_aligned_columns: &[usize],
 ) -> String {
-    let mut widths = headers
-        .iter()
-        .map(|header| header.chars().count())
-        .collect::<Vec<_>>();
-
+    let mut builder = Builder::default();
+    builder.push_record(headers.iter().copied());
     for row in rows {
-        for (idx, cell) in row.iter().enumerate() {
-            if let Some(width) = widths.get_mut(idx) {
-                *width = (*width).max(cell.chars().count());
-            }
-        }
+        builder.push_record(row);
     }
 
-    let header_cells = headers
-        .iter()
-        .map(|header| (*header).to_owned())
-        .collect::<Vec<_>>();
-    let mut lines = Vec::with_capacity(rows.len() + 1);
-    lines.push(format_compact_row(&header_cells, &widths, &[]));
-    lines.extend(
-        rows.iter()
-            .map(|row| format_compact_row(row, &widths, right_aligned_columns)),
-    );
-    lines.join("\n")
-}
-
-fn format_compact_row(row: &[String], widths: &[usize], right_aligned_columns: &[usize]) -> String {
-    let mut line = String::new();
-    for (idx, cell) in row.iter().enumerate() {
-        if idx > 0 {
-            line.push_str("  ");
-        }
-
-        let width = widths.get(idx).copied().unwrap_or_default();
-        let padding = width.saturating_sub(cell.chars().count());
-        if right_aligned_columns.contains(&idx) {
-            line.push_str(&" ".repeat(padding));
-            line.push_str(cell);
-        } else {
-            line.push_str(cell);
-            if idx + 1 < row.len() {
-                line.push_str(&" ".repeat(padding));
-            }
-        }
+    let mut table = builder.build();
+    table.with(Style::psql());
+    for column in right_aligned_columns {
+        table.with(Modify::new(Columns::one(*column)).with(Alignment::right()));
     }
-    line
+    table
+        .to_string()
+        .lines()
+        .map(str::trim_end)
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 async fn write_record(
@@ -1053,17 +1028,17 @@ mod tests {
     }
 
     #[test]
-    fn compact_table_uses_aligned_columns_without_borders() {
+    fn compact_table_uses_tabular_alignment() {
         let rows = vec![vec!["alpha".to_owned(), "9".to_owned()]];
 
         assert_eq!(
             format_compact_table(&["name", "count"], &rows, &[1]),
-            "name   count\nalpha      9"
+            " name  | count\n-------+-------\n alpha |     9"
         );
     }
 
     #[test]
-    fn compact_table_does_not_pad_last_column() {
+    fn compact_table_trims_line_endings() {
         let rows = vec![
             vec!["a".to_owned(), "x".to_owned()],
             vec!["bb".to_owned(), "yy".to_owned()],
@@ -1071,7 +1046,7 @@ mod tests {
 
         assert_eq!(
             format_compact_table(&["k", "v"], &rows, &[]),
-            "k   v\na   x\nbb  yy"
+            " k  | v\n----+----\n a  | x\n bb | yy"
         );
     }
 }
