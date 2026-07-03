@@ -9,7 +9,7 @@ use super::{
     stream::{StreamName, StreamNamePrefix},
     strings::{IdProps, PrefixProps, StartAfterProps, StrProps},
 };
-use crate::{caps, resources::ListItemsRequest};
+use crate::caps;
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(
@@ -241,7 +241,6 @@ pub struct IssueAccessTokenRequest {
     pub scope: AccessTokenScope,
 }
 
-pub type ListAccessTokensRequest = ListItemsRequest<AccessTokenIdPrefix, AccessTokenIdStartAfter>;
 
 #[cfg(test)]
 mod test {
