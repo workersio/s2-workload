@@ -8,6 +8,11 @@ produces its evidence are paired by the spec file — never typed by hand.
 After each publish the entry's `published:` field is rewritten with the new
 exploration id.
 
+Before publishing, the prepared image is checked against local HEAD: HEAD
+must be pushed, and if the image lags, `wio projects prepare` runs and is
+polled until the image commit matches — runs are always stamped with the
+commit you meant to publish.
+
 Usage: .workers/publish.py [--dry-run]
 Env:
   WIO             wio binary (needs --exploration support; default: wio)
@@ -19,6 +24,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 try:
@@ -76,11 +82,67 @@ def record_published(spec: Path, key: str, exploration_id: str) -> None:
     raise SystemExit(f"{spec.name}: no `published:` line under exploration {key}")
 
 
+PREPARE_TIMEOUT_S = 15 * 60
+POLL_INTERVAL_S = 10
+
+
+def git(*args: str) -> str:
+    return subprocess.run(
+        ["git", "-C", str(ROOT), *args], capture_output=True, text=True, check=True
+    ).stdout.strip()
+
+
+def image_commit() -> str | None:
+    result = subprocess.run(
+        [WIO, "projects", "get", "--format", "json", PROJECT_ID],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise SystemExit(f"projects get failed:\n{result.stderr or result.stdout}")
+    image = json.loads(result.stdout)["preparation"]["currentImage"]
+    return image["commitSha"] if image else None
+
+
+def ensure_image_at_head(dry_run: bool) -> None:
+    """Block until the prepared image is exactly local HEAD."""
+    head = git("rev-parse", "HEAD")
+    upstream = git("rev-parse", "@{u}")
+    if head != upstream:
+        raise SystemExit(
+            f"HEAD {head[:7]} is not pushed (upstream at {upstream[:7]}) — "
+            "push first; the image is prepared from the remote branch"
+        )
+    current = image_commit()
+    if current == head:
+        print(f"image at HEAD ({head[:7]})")
+        return
+    print(f"image at {current[:7] if current else 'none'}, HEAD is {head[:7]}")
+    if dry_run:
+        print("  would run: wio projects prepare (then poll until it matches)")
+        return
+    subprocess.run(
+        [WIO, "projects", "prepare", "--format", "json", PROJECT_ID],
+        capture_output=True,
+        text=True,
+    )
+    deadline = time.monotonic() + PREPARE_TIMEOUT_S
+    while time.monotonic() < deadline:
+        time.sleep(POLL_INTERVAL_S)
+        current = image_commit()
+        if current == head:
+            print(f"  prepared ({head[:7]})")
+            return
+    raise SystemExit(f"image still at {current[:7] if current else 'none'} "
+                     f"after {PREPARE_TIMEOUT_S}s — check `wio projects get`")
+
+
 def main() -> None:
     dry_run = "--dry-run" in sys.argv[1:]
     plan = list(officials())
     if not plan:
         raise SystemExit("no official explorations (status: done) found")
+    ensure_image_at_head(dry_run)
 
     for entry in plan:
         argv = [
