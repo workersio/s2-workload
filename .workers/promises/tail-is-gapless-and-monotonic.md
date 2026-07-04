@@ -25,7 +25,7 @@ explorations:
     replay: null
     freshness: new-current
     reported: null
-    published: nd70t5d39r2jp09z70jnnxh6dn89xahz
+    published: nd7frex5f7g5czkkjwkj3szk4d89wft2
   - key: tail-gapless-restart-interleaved
     title: Tail gapless restart interleaved
     description: >-
@@ -42,7 +42,7 @@ explorations:
     replay: null
     freshness: new-current
     reported: null
-    published: null
+    published: nd704cc8tq5hkhefrqmab7b6pd89xxv2
 ---
 
 # Tail is gapless and monotonic

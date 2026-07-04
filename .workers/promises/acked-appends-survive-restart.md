@@ -26,7 +26,7 @@ explorations:
     replay: null
     freshness: new-current
     reported: null
-    published: nd7fdf0zgq85c4pfw1rf95ccc589w2nt
+    published: nd709s996kdyq87msx1ensb94s89xxm1
   - key: acked-appends-kill9-mid-stream
     title: Acked appends kill9 mid stream
     description: >-
@@ -46,7 +46,7 @@ explorations:
     replay: null
     freshness: new-current
     reported: null
-    published: nd758vna1wv4gqwpfz0smch7p189xe2g
+    published: nd77c6v1y72mhj03hj88r6gwcx89xszg
 ---
 
 # Acked appends survive restart
