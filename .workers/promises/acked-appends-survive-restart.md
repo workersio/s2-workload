@@ -16,8 +16,8 @@ explorations:
       known sequence, stop the server cleanly, restart, read back. Proves the
       oracle (acked-manifest vs read-back diff) observes the invariant at all
       before any adversarial variant runs.
-    status: ready
-    result: null
+    status: done
+    result: green
     reason: null
     workload: workloads/acked_appends.py
     command: python3 .workers/workloads/acked_appends.py baseline
@@ -26,7 +26,7 @@ explorations:
     replay: null
     freshness: new-current
     reported: null
-    published: null
+    published: nd722qkpc6sgah6k5t19jfkpg589x2hr
   - key: acked-appends-kill9-mid-stream
     title: Acked appends kill9 mid stream
     description: >-
