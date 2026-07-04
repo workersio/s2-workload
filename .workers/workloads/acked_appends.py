@@ -36,7 +36,14 @@ def log(msg):
     print(msg, flush=True)
 
 
-def fail(code, msg):
+def invariant(inv_id, name, ok, summary):
+    """Structured line the wio runtime parses into the invariants panel."""
+    log(f"INVARIANT {inv_id} {name} {'PASS' if ok else 'FAIL'} {summary}")
+
+
+def fail(code, msg, inv=None):
+    if code == 1 and inv:
+        invariant(inv[0], inv[1], False, msg)
     log(f"VERDICT: {'RED' if code == 1 else 'VOID'} — {msg}")
     sys.exit(code)
 
@@ -172,11 +179,17 @@ def verify(manifest, readback, tail_seq):
 
     max_acked_end = max((m["end"] for m in acked), default=0)
     if tail_seq < max_acked_end:
-        fail(1, f"tail {tail_seq} < max acked end {max_acked_end} — acked data lost")
+        fail(1, f"tail {tail_seq} < max acked end {max_acked_end} — acked data lost",
+             inv=("tail_bound", "tail-covers-acked"))
+    invariant("tail_bound", "tail-covers-acked", True,
+              f"tail {tail_seq} >= max acked end {max_acked_end}")
 
     seqs = [s for s, _ in readback]
     if seqs != list(range(len(seqs))):
-        fail(1, f"read-back seqs not a dense prefix: first 20 = {seqs[:20]}")
+        fail(1, f"read-back seqs not a dense prefix: first 20 = {seqs[:20]}",
+             inv=("dense_prefix", "gapless-below-tail"))
+    invariant("dense_prefix", "gapless-below-tail", True,
+              f"{len(seqs)} records tile seq 0..{tail_seq}")
 
     by_payload = {}
     for s, b in readback:
@@ -184,19 +197,31 @@ def verify(manifest, readback, tail_seq):
 
     for b, occurrences in by_payload.items():
         if b not in sent_payloads:
-            fail(1, f"read-back contains a record never sent: {b!r} at {occurrences}")
+            fail(1, f"read-back contains a record never sent: {b!r} at {occurrences}",
+                 inv=("no_phantoms", "only-sent-records"))
         if len(occurrences) > 1:
-            fail(1, f"record duplicated (at-most-once violated): {b!r} at {occurrences}")
+            fail(1, f"record duplicated (at-most-once violated): {b!r} at {occurrences}",
+                 inv=("at_most_once", "no-duplicates"))
+    invariant("no_phantoms", "only-sent-records", True,
+              f"{len(by_payload)} distinct payloads, all sent by this run")
+    invariant("at_most_once", "no-duplicates", True,
+              "no payload appears twice (acked or unacked)")
 
     missing = [m for m in acked if m["payload"] not in by_payload]
     if missing:
         for m in missing[:10]:
             log(f"MISSING ACKED: {m}")
-        fail(1, f"{len(missing)} acked record(s) absent after restart")
+        fail(1, f"{len(missing)} acked record(s) absent after restart",
+             inv=("acked_survive", "acked-exactly-once"))
 
     order = [by_payload[m["payload"]][0] for m in acked]
     if order != sorted(order):
-        fail(1, f"acked records out of ack order: {order[:20]}")
+        fail(1, f"acked records out of ack order: {order[:20]}",
+             inv=("acked_order", "ack-order-preserved"))
+    invariant("acked_survive", "acked-exactly-once", True,
+              f"{len(acked)}/{len(acked)} acked records present after restart")
+    invariant("acked_order", "ack-order-preserved", True,
+              "read-back order matches ack order")
 
     log(f"oracle: {len(acked)} acked verified, {len(readback)} records read, "
         f"tail {tail_seq}")
