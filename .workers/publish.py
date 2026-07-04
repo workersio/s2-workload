@@ -157,9 +157,18 @@ def main() -> None:
         if dry_run:
             print(f"  would run: {' '.join(argv)}")
             continue
-        result = subprocess.run(argv, capture_output=True, text=True)
-        if result.returncode != 0:
-            raise SystemExit(f"  publish failed:\n{result.stderr or result.stdout}")
+        deadline = time.monotonic() + PREPARE_TIMEOUT_S
+        while True:
+            result = subprocess.run(argv, capture_output=True, text=True)
+            if result.returncode == 0:
+                break
+            err = result.stderr or result.stdout
+            # earlier officials' runs hold the runtime slots — wait them out
+            if "worker_capacity_full" in err and time.monotonic() < deadline:
+                print("  runtime slots busy, retrying in 30s")
+                time.sleep(30)
+                continue
+            raise SystemExit(f"  publish failed:\n{err}")
         entry["published"] = json.loads(result.stdout)["explorationId"]
         print(f"  published: {entry['published']}")
 
