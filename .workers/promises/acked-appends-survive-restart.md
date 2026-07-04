@@ -36,8 +36,8 @@ explorations:
       acknowledged before the kill must be present and in order. Unacked
       in-flight appends may or may not appear, but must not corrupt the
       acked prefix and must not be duplicated.
-    status: ready
-    result: null
+    status: done
+    result: green
     reason: null
     workload: workloads/acked_appends.py
     command: python3 .workers/workloads/acked_appends.py kill9
@@ -46,7 +46,7 @@ explorations:
     replay: null
     freshness: new-current
     reported: null
-    published: null
+    published: nd7ac90f6g2yhyqkf8yktmyf3d89xzzw
 ---
 
 # Acked appends survive restart

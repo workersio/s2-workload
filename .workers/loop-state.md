@@ -1,15 +1,12 @@
 # Loop state
 - budget: none
-- counters: { episodes: 1, producer: 1, executor: 0, workloads: 0 }
+- counters: { episodes: 3, producer: 1, executor: 2, workloads: 19 }
 - in-flight unit: none
 - re-plan triggers: none
 - publish-pending: []
-- last episode summary: producer #1 — area durability; 4 promises
-  (acked-appends-survive-restart, tail-is-gapless-and-monotonic,
-  fencing-excludes-stale-writers, zombie-writer-cannot-corrupt), 6 named
-  explorations, 3 ready (acked-appends-baseline, acked-appends-kill9-mid-stream,
-  tail-gapless-baseline). Strategy-critic gated: kill9 reshaped (flush-interval
-  arms, raw-HTTP ack manifest, anti-vacuous gate, check-tail bound), fencing
-  folded to restart-boundary attack, zombie-writer promise added on critic's
-  find. Next ready: acked-appends-baseline (oracle bring-up; prove it can go
-  red before trusting green).
+- last episode summary: executor #2 — acked-appends-kill9-mid-stream official
+  10/10 green (flush arms default|500ms|2s, randomized kill delay); durability
+  ack-gate holds under SIGKILL. Both acked-appends explorations done+green+
+  published; page shows Durability / Acked appends survive restart passing.
+  Next ready: tail-gapless-baseline (bring-up for restart-interleaved). Then
+  promote tail-gapless-restart-interleaved and zombie-writer-sigstop-takeover.

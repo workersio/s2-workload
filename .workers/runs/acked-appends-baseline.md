@@ -9,3 +9,13 @@
   across graceful restart).
 - Guest reality: /workspace read-only (state under /tmp); python3 + wget +
   busybox present, no curl/jq; SIGTERM on lite exits cleanly.
+
+# Run evidence — acked-appends-kill9-mid-stream
+
+- Official exploration: `nd7ac90f6g2yhyqkf8yktmyf3d89xzzw` (2026-07-04, depth 10,
+  10/10 green). Seeds swept kill delay (20-420 appends) and SL8_FLUSH_INTERVAL
+  arms (default 5ms | 500ms | 2s). Acked records survived SIGKILL in every
+  trial, including 2s-flush arms with hundreds of acked-then-killed records —
+  the durability gate (ack after durable_seq) holds under real process death.
+- Draft bring-up: nd7c9zcv70c2cd522hfyzggxh589wpfz (seed 2009485763, 2s arm,
+  260 acked verified, green).
