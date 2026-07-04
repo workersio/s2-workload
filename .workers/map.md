@@ -47,6 +47,13 @@ Static evidence index. Not a queue: no owners, no claims, no priorities.
   disk, network at OS level), which sims do not cover.
 - `s2-streamstore/s2-verification` (Go) holds their own correctness tooling —
   mine it for oracle ideas before drafting promises.
+- `publish.py` must run from a checkout whose branch exists on origin (the
+  CLI's `--exploration` git gate fetches `origin/<current-branch>`): run it
+  from the main checkout on `main`, not from a local-only worktree branch.
+  Drafts via `--workload-file` injection skip the gate and run from anywhere.
+- Fencing over raw HTTP: fence = append one record with a single header
+  `["", "fence"]`, body = new token; guarded appends carry `fencing_token`
+  in AppendInput; mismatch = HTTP 412. Ack `end` is exclusive.
 
 ## Areas
 
