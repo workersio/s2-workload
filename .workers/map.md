@@ -21,11 +21,25 @@ Static evidence index. Not a queue: no owners, no claims, no priorities.
   flags) is an emulator only; nothing survives restart by design.
 - Documented durability claim (README): with a bucket/local-root, "data is
   always durable on object storage before being acknowledged or returned to
-  readers."
+  readers." Verified in source: ack is durability-gated — streamer submits
+  `await_durable: false` but releases the ack only after SlateDB's
+  `durable_seq` covers the batch (`lite/src/backend/streamer.rs:571`,
+  `durability_notifier.rs`).
 - Per-stream `streamer` tokio task owns the tail, serializes appends,
   broadcasts to followers; appends are pipelined against storage latency.
-- `SL8_`-prefixed env vars tune SlateDB (e.g. `SL8_FLUSH_INTERVAL`, default
-  50ms remote / 5ms in-memory).
+- `SL8_`-prefixed env vars tune SlateDB. `SL8_FLUSH_INTERVAL` default is
+  **5ms for local FS and in-memory; 50ms is S3-only** (`lite/src/server.rs:96`).
+- Startup does time-based fencing: new instance sleeps one
+  `manifest_poll_interval` "to ensure prior instance fenced out"
+  (`lite/src/server.rs`) — poll `check-tail` for readiness after restart,
+  never fixed sleeps; and the time-based assumption is itself an attack
+  surface (zombie-writer promise).
+- The s2 CLI prints append acks to **stderr**, ANSI-colored, deduped per
+  linger batch — unusable as an ack manifest. Ack-precision paths use raw
+  HTTP (one request = one ack); CLI is fine for read-back/check-tail.
+- Fencing is implemented in lite: token persisted via
+  `lite/src/backend/kv/stream_fencing_token.rs`, mismatch rejected at
+  `streamer.rs:341`; cooperative (enforced only when appends carry a token).
 - `/streams/*` requests need the `S2-Basin` header when hitting lite over raw
   HTTP; the CLI/SDKs handle it.
 - Upstream runs turmoil/madsim-style deterministic sim tests (`mad-turmoil`);
@@ -38,6 +52,7 @@ Static evidence index. Not a queue: no owners, no claims, no priorities.
 
 | Key | Title | Spec |
 |-----|-------|------|
+| durability | Durability | areas/durability.md |
 
 ## Promoted findings
 
