@@ -57,6 +57,24 @@ stale-token appends fail with an explicit rejection both before and after
 restart; read-back [0, check-tail) contains exactly the accepted records;
 acceptance behavior is identical across the restart boundary.
 
+## Bounced direction: concurrent-fence-mid-stream (not drafted)
+
+A "fence while appends are in-flight" concurrency arm was considered and
+**bounced by strategy-critic** (2026-07-05, source-verified). All appends
+and the fence flow through one mpsc channel into a single streamer task;
+`sequence_records` (streamer.rs:341) checks the token and `apply_command`
+(streamer.rs:371) applies the fence **synchronously within one invocation,
+no await between check and apply** — there is no intra-streamer TOCTOU gap.
+The HTTP "race" only decides channel arrival order; whichever message
+arrives first wins deterministically and no stale-token append can survive
+past the fence record's position. The oracle would be green by
+construction, and pure token-application ordering under concurrency is
+exactly what upstream's Porcupine/linearizability harness already models.
+The one genuinely racy seam here would be a **generation handoff** — an old
+streamer draining while a new one spawns after lease loss — which is a
+different promise, not this one. Not drafted; recorded so a later producer
+does not re-propose it.
+
 ## Replay plan
 
 Seed drives the fence/append/kill schedule. Red runs replay by recorded

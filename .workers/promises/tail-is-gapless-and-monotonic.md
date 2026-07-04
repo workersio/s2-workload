@@ -43,6 +43,32 @@ explorations:
     freshness: new-current
     reported: null
     published: nd7dxn5nb5987v3x5977jsmgkx89wtx2
+  - key: tail-gapless-straddle-at-kill
+    title: Tail gapless straddle at kill
+    description: >-
+      restart-interleaved kills *between* appender waves — a quiesced
+      boundary. This arm kills *during* a wave: writers have in-flight
+      unacked appends AT the SIGKILL, then restart and resume. The tail is
+      re-derived fresh from durable KV on every restart
+      (load_persisted_stream_tail, core.rs:144, DurabilityLevel::Remote ->
+      stable_pos, streamer.rs:265; next_assignable_pos returns stable_pos
+      when pending is empty, streamer.rs:327-331), guarded by
+      assert_no_records_following_tail (core.rs:165). The straddle asks: when
+      a writer's append was in-flight at the kill, does resume assign the
+      next writer a seq that a pre-kill in-flight append also received, or
+      leave a hole — i.e. does the union of all writers' acked ranges still
+      tile [0, tail) with no seq owned by two writers across the boundary.
+    status: ready
+    result: null
+    reason: null
+    workload: workloads/tail_gapless.sh
+    command: sh .workers/workloads/tail_gapless.sh straddle-at-kill
+    faults: []
+    depth: 10
+    replay: null
+    freshness: new-current
+    reported: null
+    published: null
 ---
 
 # Tail is gapless and monotonic
@@ -72,7 +98,37 @@ unusable for machine-readable ranges), one log file per writer. Invariants:
 3. (restart variant) The union across restart boundaries still tiles — a
    seq assigned twice across a restart is an immediate finding.
 
+## Straddle-at-kill arm
+
+Strategy-critic (2026-07-05, source-verified) corrected an earlier "N
+restart boundaries" framing: the resume position is re-derived **fresh from
+durable KV on every restart** (`load_persisted_stream_tail`, core.rs:144,
+`DurabilityLevel::Remote` -> `stable_pos`, streamer.rs:265;
+`next_assignable_pos` returns `stable_pos` when pending is empty,
+streamer.rs:327-331), so no snapshot is carried across restarts and there
+is no "increasingly stale snapshot" to drift — extra boundaries would just
+repeat one mechanism (a seed sweep, not a new surface). The genuinely
+distinct element is the **straddle**: writers with in-flight *unacked*
+appends at the instant of the kill, versus restart-interleaved which kills
+between waves (quiesced). One boundary is enough to exercise it.
+
+Oracle invariants (extend the promise's tiling oracle; make the guards
+explicit):
+1. Union of all writers' acked (start,end) ranges, sorted, tiles [0, tail)
+   exactly — no overlap, no gap.
+2. No seq is owned by two distinct writers across the kill boundary — a seq
+   assigned to a pre-kill in-flight append and re-assigned to a post-restart
+   writer is an immediate finding.
+3. Read-back [0, tail) is dense; every seq's content matches the writer that
+   owned its range; the server never persisted a record beyond its own
+   persisted tail (the `assert_no_records_following_tail` guard, core.rs:165,
+   must never have fired — a crash on the restart is itself a finding).
+4. Anti-vacuous: at least one writer had an append in-flight (sent, unacked)
+   at the SIGKILL (a real straddle, not a quiesced boundary), and the run
+   completed the restart; otherwise the trial is void.
+
 ## Replay plan
 
-Seed drives writer interleaving and (in the restart variant) the kill
-point. Red runs replay by recorded seed via --exploration.
+Seed drives writer interleaving and, in the restart variants, the kill
+point(s) — one for restart-interleaved, N for multi-restart-straddle. Red
+runs replay by recorded seed via --exploration.

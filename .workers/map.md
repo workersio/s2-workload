@@ -60,6 +60,7 @@ Static evidence index. Not a queue: no owners, no claims, no priorities.
 | Key | Title | Spec |
 |-----|-------|------|
 | durability | Durability | areas/durability.md |
+| reads | Reads | areas/reads.md |
 
 ## Promoted findings
 

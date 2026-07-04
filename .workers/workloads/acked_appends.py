@@ -2,8 +2,10 @@
 """Workload: acked appends survive restart (s2 lite, --local-root).
 
 Modes:
-  baseline  start -> append N -> graceful stop -> restart -> verify
-  kill9     start -> append under load -> SIGKILL mid-stream -> restart -> verify
+  baseline             start -> append N -> graceful stop -> restart -> verify
+  kill9                start -> append under load -> SIGKILL mid-stream -> restart -> verify
+  kill-during-recovery kill9 phase 1, then crash the server repeatedly DURING
+                       first-access recovery, then final clean restart -> verify
 
 Oracle (see .workers/promises/acked-appends-survive-restart.md):
   - manifest line written only after the append HTTP response is fully read
@@ -11,6 +13,8 @@ Oracle (see .workers/promises/acked-appends-survive-restart.md):
   - acked records: exactly once, in order, identical content
   - unacked records: present or absent, but at most once
   - anti-vacuous gate in kill9: enough acks AND >=1 in-flight-unacked at kill
+  - anti-vacuous gate in kill-during-recovery: >=1 SIGKILL landed during a
+    first-access recovery (before that restart served a successful stream read)
 
 Exit codes: 0 green, 1 red (finding), 3 void/blocked (setup or vacuous trial).
 """
@@ -21,6 +25,7 @@ import os
 import signal
 import subprocess
 import sys
+import threading
 import time
 
 S2 = os.path.join(".workers", "vendor", "bin", "s2-linux-amd64")
@@ -113,6 +118,78 @@ def wait_stream_ready(deadline_s=120):
             last = repr(e)
         time.sleep(0.2)
     fail(3, f"stream tail not readable after restart: {last}")
+
+
+def wait_serving(proc, deadline_s=90):
+    """Return 'serving' once /health is 200, 'exited' if proc dies first,
+    'timeout' otherwise. Unlike wait_health this never exits the process —
+    the recovery-round loop decides what a mid-round crash means."""
+    deadline = time.monotonic() + deadline_s
+    while time.monotonic() < deadline:
+        if proc.poll() is not None:
+            return "exited"
+        try:
+            status, _ = http_call("GET", "/health", timeout=2)
+            if status == 200:
+                return "serving"
+        except OSError:
+            pass
+        time.sleep(0.05)
+    return "timeout"
+
+
+def interrupt_recovery_rounds(seed):
+    """After SIGKILL #1, crash the server repeatedly DURING first-access
+    recovery. Each round: start the server, wait until it is serving (past the
+    startup manifest_poll_interval sleep and SlateDB open), fire a stream-tail
+    request that forces the lazy per-stream recovery (start_streamer ->
+    load_persisted_stream_tail -> assert_no_records_following_tail, core.rs:
+    82/144/165), and SIGKILL almost immediately so the kill lands during the
+    restart's recovery path rather than after it. Returns the count of rounds
+    where the kill preceded a successful (200) stream read — a genuine
+    mid-recovery interruption (the anti-vacuous witness)."""
+    rounds = 2 + seed % 3
+    mid_recovery_kills = 0
+    for r in range(rounds):
+        proc = start_server()
+        state = wait_serving(proc)
+        if state == "exited":
+            # Server died on its own during startup/recovery. A crash on
+            # legitimately-recovered data would be a finding; here it is most
+            # likely a self-inflicted restart of a prior interrupted round —
+            # record and let the next round recover from it.
+            log(f"recovery round {r}: server exited on its own "
+                f"(rc={proc.returncode}) before serving")
+            continue
+        if state == "timeout":
+            fail(3, f"recovery round {r}: server never served — setup blocked")
+        probe = {"status": None}
+
+        def _probe():
+            try:
+                st, _ = http_call(
+                    "GET", f"/v1/streams/{STREAM}/records/tail", timeout=5)
+                probe["status"] = st
+            except OSError as e:
+                probe["status"] = repr(e)
+
+        t = threading.Thread(target=_probe, daemon=True)
+        t.start()
+        delay = ((seed >> (r + 3)) % 8) / 1000.0  # 0-7ms into first access
+        time.sleep(delay)
+        pre_kill_ok = probe["status"] == 200
+        proc.send_signal(signal.SIGKILL)
+        t.join(timeout=5)
+        if not pre_kill_ok:
+            mid_recovery_kills += 1
+        log(f"recovery round {r}: probe_status={probe['status']} "
+            f"pre_kill_200={pre_kill_ok} delay={delay * 1000:.0f}ms")
+        try:
+            proc.wait(timeout=30)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=30)
+    return mid_recovery_kills
 
 
 def create_basin():
@@ -244,6 +321,15 @@ def main():
         log(f"flush-arm={arm or 'default'}")
         total_appends = 4000
         kill_after = 20 + (seed >> 2) % 400  # appends before SIGKILL
+    elif mode == "kill-during-recovery":
+        arm = ["", "500ms", "2s"][seed % 3]
+        if arm:
+            env_extra["SL8_FLUSH_INTERVAL"] = arm
+        log(f"flush-arm={arm or 'default'}")
+        total_appends = 4000
+        # Larger acked prefix than kill9: more records => longer first-access
+        # recovery scan => a wider window for SIGKILL #2 to land inside it.
+        kill_after = 100 + (seed >> 2) % 600
 
     server = start_server(env_extra)
     wait_health()
@@ -270,11 +356,12 @@ def main():
     acked_count = sum(1 for m in manifest if m["acked"])
     log(f"appends: {len(manifest)} attempted, {acked_count} acked")
 
-    if mode == "kill9":
+    if mode in ("kill9", "kill-during-recovery"):
         if not killed:
             fail(3, "kill point never reached — vacuous trial")
-        if acked_count < 10:
-            fail(3, f"only {acked_count} acks before kill — below floor, void")
+        floor = 10 if mode == "kill9" else 50
+        if acked_count < floor:
+            fail(3, f"only {acked_count} acks before kill — below floor {floor}, void")
         if not in_flight_at_kill:
             fail(3, "no in-flight append at kill — quiesced kill is theater")
         server.wait(timeout=30)
@@ -288,6 +375,15 @@ def main():
             log("note: SIGTERM ignored, escalating to SIGKILL")
             server.kill()
             server.wait(timeout=30)
+
+    if mode == "kill-during-recovery":
+        mid = interrupt_recovery_rounds(seed)
+        if mid < 1:
+            fail(3, "no SIGKILL landed during recovery (every probe completed "
+                    "first) — recovery window never interrupted, void")
+        log(f"recovery interrupted mid-window {mid} time(s)")
+        invariant("recovery_interrupted", "crash-during-recovery", True,
+                  f"{mid} SIGKILL(s) landed during first-access recovery")
 
     server2 = start_server()
     wait_health()

@@ -47,6 +47,32 @@ explorations:
     freshness: new-current
     reported: null
     published: nd7c2a2s7n89atsnfjaba9fmps89wzyr
+  - key: acked-appends-kill-during-recovery
+    title: Acked appends kill during recovery
+    description: >-
+      Append and ack a prefix P while streaming, SIGKILL #1 mid-stream, then
+      restart and SIGKILL #2 during the first post-restart stream access —
+      the lazy per-stream recovery, not the inert startup sleep. s2-lite's
+      real recovery is start_streamer -> load_persisted_stream_tail
+      (core.rs:82,144, DurabilityLevel::Remote) -> assert_no_records_following_tail
+      (core.rs:165), triggered by the first request touching the stream
+      (the check-tail readiness probe forces the streamer spawn). SIGKILL #2
+      lands mid-rebuild, before a successful check-tail returns; then restart
+      a third time cleanly. Every record acked before SIGKILL #1 must be
+      present, in order, exactly once after the final restart. This attacks
+      the s2-lite tail-rebuild path being interrupted, which kill9 (single
+      kill of the serving process) never reaches.
+    status: ready
+    result: null
+    reason: null
+    workload: workloads/acked_appends.py
+    command: python3 .workers/workloads/acked_appends.py kill-during-recovery
+    faults: []
+    depth: 10
+    replay: null
+    freshness: new-current
+    reported: null
+    published: null
 ---
 
 # Acked appends survive restart
@@ -100,9 +126,44 @@ Before the baseline goes green, the oracle must be shown able to go red
 (mutate the manifest or drop a record from read-back once, manually) —
 "diff passed" is only meaningful after that.
 
+## Recovery-atomicity arm (kill-during-recovery)
+
+kill9 kills the *serving* process once; this arm kills the *recovering*
+process — but at the point where s2-lite's own recovery code actually runs.
+Strategy-critic (2026-07-05, source-verified) corrected an earlier draft
+that aimed SIGKILL #2 at the `sleep(manifest_poll_interval)` startup wait
+(server.rs:188-198): that sleep is inert and killing during it mutates
+nothing, and killing during SlateDB's `build()` only interrupts SlateDB's
+own WAL/manifest replay (upstream/sim-tested). The s2-lite recovery is
+**lazy and per-stream, on first access after serving begins**:
+`start_streamer` (core.rs:82) calls `load_persisted_stream_tail`
+(core.rs:144, `DurabilityLevel::Remote`) then the hard guard
+`assert_no_records_following_tail` (core.rs:165, panics if any record sits
+beyond the persisted tail). SIGKILL #2 must land *there* — during the first
+stream access the check-tail readiness probe forces — so the tail-rebuild
+is interrupted and must resume cleanly on the third start. The bug class: a
+tail rebuilt inconsistently with what was durable, or the assert-guard
+firing on a legitimately-recovered stream, dropping or duplicating records
+acked before kill #1.
+
+Oracle invariants (same acked-manifest-vs-read-back family as kill9):
+1. `tail >= max acked-before-kill1 end seq` after the final restart.
+2. Every record acked before SIGKILL #1 appears exactly once in read-back,
+   in ack order, identical content.
+3. Dense seq prefix — no gaps below tail.
+4. Unacked / in-flight records may be present or absent, but at most once —
+   a recovery double-apply must not pass as "indeterminate".
+5. Anti-vacuous: SIGKILL #2 must land during first-access recovery — after
+   the restarted process began accepting connections but before it returned
+   a *successful* check-tail for the stream (assert no successful readiness
+   response was observed before the kill); and acked-before-kill1 count >=
+   floor. Otherwise the rebuild path was never interrupted and the trial is
+   void.
+
 ## Replay plan
 
 Seed drives kill delay, payload schedule, and flush-interval arm — all
-three, or replay does not reproduce. A red run replays its recorded seed
+three, or replay does not reproduce. The recovery arm additionally
+seed-derives the SIGKILL #2 delay within the restart window. A red run replays its recorded seed
 via `--exploration acked-appends-kill9-mid-stream`; evidence lands in
 runs/ with the manifest, the read-back dump, and the diff.
