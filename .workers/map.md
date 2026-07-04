@@ -10,7 +10,7 @@ Static evidence index. Not a queue: no owners, no claims, no priorities.
 | Pinned ref | `76bf34a8ceb226970a6a847eaeb72e5b1464c081` (main, 2026-07-03) |
 | System under test | `s2 lite` — self-hostable S2 API server (SlateDB storage engine) |
 | SUT binary | `.workers/vendor/bin/s2` — release `s2-cli-v0.38.0`, x86_64-linux-musl, embeds CLI + lite server |
-| wio project | (pending connect in web app) |
+| wio project | `kn712jhg9p7wqx3a0rwnh698vs89x7rt` ("S2 Workload", prod) |
 | wio branch | `main` |
 | Local wio binary | `/Users/viswa/code/workers/formal/packages/wio/target/release/wio` (has `--exploration` / `--workload-file`; npm 0.4.0 not yet released) |
 
