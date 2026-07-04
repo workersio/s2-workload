@@ -7,7 +7,7 @@ claim: >-
   token are rejected and leave no trace in the stream, including across
   server restarts.
 status: active
-provenance: https://s2.dev/docs/api (append semantics: fencing_token); lite/src/backend/kv/stream_fencing_token.rs (persisted token); lite/src/backend/streamer.rs:341 (mismatch rejection)
+provenance: "https://s2.dev/docs/api (append semantics: fencing_token); lite/src/backend/kv/stream_fencing_token.rs (persisted token); lite/src/backend/streamer.rs:341 (mismatch rejection)"
 explorations:
   - key: fencing-stale-across-restart
     title: Fencing stale across restart

@@ -7,7 +7,7 @@ claim: >-
   or persist appends once a newer instance has taken over; nothing a zombie
   accepts after takeover appears in the stream.
 status: active
-provenance: lite/src/server.rs startup ("sleeping to ensure prior instance fenced out" — time-based fencing on one manifest_poll_interval); SlateDB manifest-epoch fencing
+provenance: "lite/src/server.rs startup (sleeping to ensure prior instance fenced out — time-based fencing on one manifest_poll_interval); SlateDB manifest-epoch fencing"
 explorations:
   - key: zombie-writer-sigstop-takeover
     title: Zombie writer sigstop takeover
