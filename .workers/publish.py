@@ -1,0 +1,110 @@
+#!/usr/bin/env python3
+"""Publish every official exploration to the status page.
+
+Officials are the explorations marked `status: done` in
+.workers/promises/*.md frontmatter. Key, command, and depth are read from
+the same frontmatter entry, so exploration identity and the command that
+produces its evidence are paired by the spec file — never typed by hand.
+After each publish the entry's `published:` field is rewritten with the new
+exploration id.
+
+Usage: .workers/publish.py [--dry-run]
+Env:
+  WIO             wio binary (needs --exploration support; default: wio)
+  WIO_PROJECT_ID  target project (default: the S2 project on prod)
+"""
+
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+try:
+    import yaml
+except ImportError:
+    raise SystemExit(
+        "pyyaml not available in this python3 — run as `python3 .workers/publish.py`"
+        " with a python that has it, or pip install pyyaml"
+    )
+
+ROOT = Path(__file__).resolve().parent.parent
+WIO = os.environ.get("WIO", "wio")
+PROJECT_ID = os.environ.get("WIO_PROJECT_ID", "kn712jhg9p7wqx3a0rwnh698vs89x7rt")
+
+
+def frontmatter(text: str) -> dict:
+    match = re.match(r"\A---\n(.*?)\n---\n", text, re.DOTALL)
+    return yaml.safe_load(match.group(1)) if match else {}
+
+
+def officials():
+    for spec in sorted((ROOT / ".workers" / "promises").glob("*.md")):
+        front = frontmatter(spec.read_text())
+        for exploration in front.get("explorations") or []:
+            if exploration.get("status") != "done":
+                continue
+            yield {
+                "spec": spec,
+                "promise": front["key"],
+                "key": exploration["key"],
+                "command": exploration["command"],
+                "depth": exploration["depth"],
+            }
+
+
+def record_published(spec: Path, key: str, exploration_id: str) -> None:
+    """Rewrite the `published:` line inside this exploration's entry only.
+
+    Line-targeted so the surrounding frontmatter (comments, folded scalars)
+    survives untouched — never round-trip the YAML through a dumper.
+    """
+    lines = spec.read_text().splitlines(keepends=True)
+    in_entry = False
+    for i, line in enumerate(lines):
+        if re.match(rf"^\s*- key: {re.escape(key)}\s*$", line):
+            in_entry = True
+            continue
+        if in_entry and re.match(r"^\s*- key: |^---", line):
+            break
+        if in_entry and re.match(r"^\s*published:", line):
+            indent = line[: len(line) - len(line.lstrip())]
+            lines[i] = f"{indent}published: {exploration_id}\n"
+            spec.write_text("".join(lines))
+            return
+    raise SystemExit(f"{spec.name}: no `published:` line under exploration {key}")
+
+
+def main() -> None:
+    dry_run = "--dry-run" in sys.argv[1:]
+    plan = list(officials())
+    if not plan:
+        raise SystemExit("no official explorations (status: done) found")
+
+    for entry in plan:
+        argv = [
+            WIO, "simulate", "create",
+            "--command", entry["command"],
+            "--exploration", entry["key"],
+            "--depth", str(entry["depth"]),
+            "--format", "json",
+            PROJECT_ID,
+        ]
+        print(f"{entry['key']} (depth {entry['depth']}): {entry['command']}")
+        if dry_run:
+            print(f"  would run: {' '.join(argv)}")
+            continue
+        result = subprocess.run(argv, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise SystemExit(f"  publish failed:\n{result.stderr or result.stdout}")
+        exploration_id = json.loads(result.stdout)["explorationId"]
+        record_published(entry["spec"], entry["key"], exploration_id)
+        print(f"  published: {exploration_id}")
+
+    if not dry_run:
+        print(f"\nStatus page: projects/{PROJECT_ID}/promises/…")
+
+
+if __name__ == "__main__":
+    main()
