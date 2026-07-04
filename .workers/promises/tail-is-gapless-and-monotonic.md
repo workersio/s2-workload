@@ -15,8 +15,8 @@ explorations:
       Several concurrent writers append batches to one stream with no
       faults; ack'd sequence ranges must tile [0, tail) with no overlap and
       no gap, and a full read must return exactly that dense range.
-    status: ready
-    result: null
+    status: done
+    result: green
     reason: null
     workload: workloads/tail_gapless.sh
     command: sh .workers/workloads/tail_gapless.sh baseline
