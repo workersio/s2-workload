@@ -19,8 +19,8 @@ explorations:
     status: ready
     result: null
     reason: null
-    workload: workloads/acked_appends.sh
-    command: sh .workers/workloads/acked_appends.sh baseline
+    workload: workloads/acked_appends.py
+    command: python3 .workers/workloads/acked_appends.py baseline
     faults: []
     depth: 3
     replay: null
@@ -39,8 +39,8 @@ explorations:
     status: ready
     result: null
     reason: null
-    workload: workloads/acked_appends.sh
-    command: sh .workers/workloads/acked_appends.sh kill9
+    workload: workloads/acked_appends.py
+    command: python3 .workers/workloads/acked_appends.py kill9
     faults: []
     depth: 10
     replay: null
