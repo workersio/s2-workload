@@ -160,12 +160,17 @@ def main() -> None:
         result = subprocess.run(argv, capture_output=True, text=True)
         if result.returncode != 0:
             raise SystemExit(f"  publish failed:\n{result.stderr or result.stdout}")
-        exploration_id = json.loads(result.stdout)["explorationId"]
-        record_published(entry["spec"], entry["key"], exploration_id)
-        print(f"  published: {exploration_id}")
+        entry["published"] = json.loads(result.stdout)["explorationId"]
+        print(f"  published: {entry['published']}")
 
+    # Rewrite `published:` lines only after every publish has fired: the CLI's
+    # git gate requires a clean pushed tree, so mutating a spec between
+    # publishes would fail the next one.
     if not dry_run:
+        for entry in plan:
+            record_published(entry["spec"], entry["key"], entry["published"])
         print(f"\nStatus page: projects/{PROJECT_ID}/promises/…")
+        print("commit + push the rewritten `published:` fields")
 
 
 if __name__ == "__main__":
