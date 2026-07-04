@@ -32,7 +32,7 @@ explorations:
       Kill and restart the server between appender waves; sequence
       assignment must resume exactly at the persisted tail — no reuse of
       already-assigned seq numbers, no holes across the restart boundary.
-    status: planned
+    status: ready
     result: null
     reason: null
     workload: workloads/tail_gapless.sh

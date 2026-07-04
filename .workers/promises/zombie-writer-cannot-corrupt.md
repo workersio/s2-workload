@@ -18,7 +18,7 @@ explorations:
       acked by A that survives in read-back is corruption; the two
       instances' accepted writes must never interleave into an inconsistent
       stream.
-    status: planned
+    status: ready
     result: null
     reason: null
     workload: workloads/zombie_writer.sh
