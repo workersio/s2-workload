@@ -24,3 +24,19 @@
   demoted): fault-free concurrent appends are upstream's home turf; the
   value here is the proven range-tiling oracle + multi-writer plumbing for
   the restart-interleaved rung.
+
+# Run evidence — tail-gapless-restart-interleaved
+
+- Restart mode added to the same workload file (same setup/oracle family,
+  per the work item): 2-4 appender waves, SIGKILL + restart between waves,
+  check-tail polled for readiness (startup fencing sleep), acked ranges
+  accumulated across all waves into the one global tiling verify — seq
+  reuse across a restart surfaces as an overlap, a hole as a gap; the
+  workload logs TAIL REGRESSION if the recovered tail undercuts the acked
+  high-water mark.
+- Restart-mode self-test: draft 01KWQCHNHBSR452YRFVF12HBVT RED (dropped
+  ack detected as tiling gap).
+- Bring-up: nd74a20tcv4cw3kmd3nt49frdh89wjg4 — 3/3 green; e.g. seed
+  2212099588: recovered tail = acked hi = 90 exactly, 89 ranges from 4
+  writers tile [0, 169) across the kill boundary.
+- Official exploration: see frontmatter `published:` (depth 10).

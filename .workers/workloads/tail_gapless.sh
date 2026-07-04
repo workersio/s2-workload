@@ -3,7 +3,11 @@
 #
 # Modes:
 #   baseline  concurrent writers, no faults; ack'd ranges must tile [0, tail)
-#   restart   (planned rung — not implemented yet; exits VOID)
+#   restart   SIGKILL + restart the server between appender waves; sequence
+#             assignment must resume exactly at the persisted tail — the
+#             union of ack'd ranges across all waves must still tile
+#             [0, tail): a seq assigned twice across a restart shows up as
+#             an overlap, a hole across the boundary as a gap
 #
 # Oracle (see .workers/promises/tail-is-gapless-and-monotonic.md):
 #   - range_tiling: all ack'd (start,end) ranges, sorted, tile [0, tail)
@@ -25,6 +29,7 @@ import http.client
 import json
 import os
 import random
+import signal
 import subprocess
 import sys
 import threading
@@ -137,6 +142,24 @@ def get_tail():
     return json.loads(data)["tail"]["seq_num"]
 
 
+def wait_stream_ready(deadline_s=120):
+    """Readiness after restart: startup sleeps one manifest_poll_interval
+    (time-based fencing) — poll check-tail, never fixed sleeps."""
+    deadline = time.monotonic() + deadline_s
+    last = None
+    while time.monotonic() < deadline:
+        try:
+            status, data = http_call(
+                "GET", f"/v1/streams/{STREAM}/records/tail", timeout=2)
+            if status == 200:
+                return json.loads(data)["tail"]["seq_num"]
+            last = (status, data[:200])
+        except OSError as e:
+            last = repr(e)
+        time.sleep(0.2)
+    fail(3, f"stream tail not readable after restart: {last}")
+
+
 def read_all(tail_seq):
     records = []
     cursor = 0
@@ -160,14 +183,15 @@ def read_all(tail_seq):
     return records
 
 
-def writer(wid, seed, n_appends, acks, errors):
+def writer(wave, wid, seed, n_appends, acks, errors):
     """acks: shared list of dicts (appended under lock); one log per writer."""
-    rng = random.Random(seed ^ (wid * 0x9E3779B9))
-    path = os.path.join(WORK_DIR, f"writer-{wid}.log")
+    rng = random.Random(seed ^ (wid * 0x9E3779B9) ^ (wave * 0x85EBCA6B))
+    path = os.path.join(WORK_DIR, f"writer-v{wave}-{wid}.log")
     with open(path, "w") as f:
         for k in range(n_appends):
             size = 1 + rng.randrange(3)
-            payloads = [f"s{seed}-w{wid}-a{k:04d}-r{j}" for j in range(size)]
+            payloads = [f"s{seed}-v{wave}-w{wid}-a{k:04d}-r{j}"
+                        for j in range(size)]
             result = append_batch(payloads)
             if result is None:
                 errors.append((wid, k))
@@ -268,14 +292,37 @@ def verify(acks, tail_seq, n_writers):
               f"all {len(ordered)} ranges hold exactly their owner's batch")
 
 
+def run_wave(wave, seed, n_writers, n_appends, acks):
+    errors = []
+    threads = [
+        threading.Thread(target=writer,
+                         args=(wave, w, seed, n_appends, acks, errors))
+        for w in range(n_writers)
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    if errors:
+        fail(3, f"{len(errors)} append(s) refused mid-wave {wave} (writers "
+                f"are fault-free; first: writer {errors[0][0]} append "
+                f"{errors[0][1]}) — setup")
+
+
 def main():
     mode = sys.argv[1] if len(sys.argv) > 1 else "baseline"
-    if mode != "baseline":
-        fail(3, f"mode {mode!r} not implemented — rung is planned, not ready")
+    if mode not in ("baseline", "restart"):
+        fail(3, f"mode {mode!r} not implemented")
     seed = derive_seed()
     n_writers = 3 + seed % 3
-    n_appends = 25 + (seed >> 3) % 26  # per writer
-    log(f"mode={mode} seed={seed} writers={n_writers} appends/writer={n_appends}")
+    if mode == "restart":
+        n_waves = 2 + (seed >> 16) % 3
+        n_appends = 8 + (seed >> 3) % 9   # per writer per wave
+    else:
+        n_waves = 1
+        n_appends = 25 + (seed >> 3) % 26  # per writer
+    log(f"mode={mode} seed={seed} writers={n_writers} "
+        f"appends/writer={n_appends} waves={n_waves}")
     os.makedirs(DATA_DIR, exist_ok=True)
 
     server = start_server()
@@ -288,23 +335,29 @@ def main():
     acks = [{"writer": -1, "k": 0, "payloads": [f"s{seed}-primer"],
              "start": primer[0], "end": primer[1]}]
 
-    errors = []
-    threads = [
-        threading.Thread(target=writer, args=(w, seed, n_appends, acks, errors))
-        for w in range(n_writers)
-    ]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join()
+    for wave in range(n_waves):
+        if wave > 0:
+            # kill hard between waves; assignment must resume at the
+            # persisted tail after recovery
+            server.send_signal(signal.SIGKILL)
+            server.wait(timeout=30)
+            server = start_server()
+            wait_health()
+            tail_r = wait_stream_ready()
+            hi = max(a["start"] + len(a["payloads"]) for a in acks)
+            log(f"restart {wave}: tail after recovery = {tail_r}, "
+                f"max acked hi = {hi}")
+            if tail_r < hi:
+                log(f"TAIL REGRESSION: recovered tail {tail_r} < acked hi "
+                    f"{hi} — expecting the tiling oracle to go red")
+        run_wave(wave, seed, n_writers, n_appends, acks)
+        log(f"wave {wave}: cumulative acks = {len(acks)}")
 
-    if errors:
-        fail(3, f"{len(errors)} append(s) refused in a fault-free run "
-                f"(first: writer {errors[0][0]} append {errors[0][1]}) — setup")
-    expected = 1 + n_writers * n_appends
+    expected = 1 + n_waves * n_writers * n_appends
     if len(acks) != expected:
         fail(3, f"expected {expected} acks, got {len(acks)} — setup")
-    log(f"appends: {len(acks)} acked across {n_writers} writers")
+    log(f"appends: {len(acks)} acked across {n_writers} writers x "
+        f"{n_waves} wave(s)")
 
     tail_seq = get_tail()
     verify(acks, tail_seq, n_writers)
