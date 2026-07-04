@@ -19,3 +19,14 @@
   the durability gate (ack after durable_seq) holds under real process death.
 - Draft bring-up: nd7c9zcv70c2cd522hfyzggxh589wpfz (seed 2009485763, 2s arm,
   260 acked verified, green).
+
+# 2026-07-04 (later) — INVARIANT protocol re-publish
+
+Workload now emits one `INVARIANT <id> <name> PASS|FAIL <summary>` line per
+oracle clause (6 clauses). Verified: runtime parses them into structured
+`invariants` on the workload record; self-test draft shows
+`hasInvariantViolation: true` with the violated clause (dense_prefix).
+Officials re-fired with the new workload (idempotent upsert):
+- baseline: nd7a2x0yk3jw2zcjqbdwsbp14589wp0q — 3/3 green
+- kill9:    nd70mmyfffbhy56swm643s8vwx89x2qe — 10/10 green, e.g. 396 acked
+  verified after SIGKILL

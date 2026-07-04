@@ -1,6 +1,6 @@
 # Loop state
 - budget: none
-- counters: { episodes: 3, producer: 1, executor: 2, workloads: 19 }
+- counters: { episodes: 3, producer: 1, executor: 2, workloads: 34 }
 - in-flight unit: none
 - re-plan triggers: none
 - publish-pending: []
