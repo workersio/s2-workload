@@ -1,5 +1,8 @@
 # Run evidence — tail-gapless-baseline
 
+- Official exploration: `nd73rgzhky72vswbhxayvhrjeh89wge0` (2026-07-05,
+  depth 5, 5/5 green) @ 6407e05.
+
 - Workload: `.workers/workloads/tail_gapless.sh` — self-contained sh wrapper +
   embedded python3 (injection layers exactly one file onto the base image).
   Concurrent writer threads append 1-3-record batches via raw HTTP (one

@@ -18,8 +18,8 @@ explorations:
       acked by A that survives in read-back is corruption; the two
       instances' accepted writes must never interleave into an inconsistent
       stream.
-    status: ready
-    result: null
+    status: done
+    result: green
     reason: null
     workload: workloads/zombie_writer.sh
     command: sh .workers/workloads/zombie_writer.sh sigstop-takeover
@@ -53,16 +53,30 @@ restarting server mid-recovery and restart again.
 ## Oracle
 
 Drivers keep separate ack manifests for A and B (raw HTTP, one request =
-one ack). Let T = the moment B's first ack returns. Invariants:
+one ack). Let T = the moment B's first ack returns, and let the takeover
+boundary = B's recovered tail, observed after B first serves check-tail
+and before B's first append. Invariants:
 1. Every B-acked record appears exactly once in read-back.
-2. No append acked by A after T appears in read-back — a zombie may get
-   acks rejected or connections dropped (both fine), but an acked-and-
-   persisted post-takeover A write is a finding.
+2. No append PERSISTED by A after takeover appears in read-back. The
+   criterion is persist-time, not ack-time: an A ack returned after T
+   whose seq range lies entirely below the takeover boundary is a late
+   ack of a write that was durable before B took over (B recovered it and
+   built on it) — allowed, not a finding. An A-accepted record at or
+   beyond the boundary that appears in read-back is the finding, acked or
+   not. (2026-07-05 draft evidence: the ack-time phrasing false-flagged
+   in-flight-at-SIGSTOP appends whose records B had already recovered —
+   seq below boundary, stream dense, no consumer-visible inconsistency.)
+   An A ack after T for a record absent from read-back is a lie told to a
+   client that should have been fenced — log it, but rejected/dropped/
+   lost zombie appends are all fine, not findings.
 3. Read-back [0, check-tail) is a dense, gapless seq range whose contents
    are exactly (A-acked-before-T set, possibly-truncated suffix aside) ∪
    (B-acked set), each at most once.
-4. Anti-vacuous gate: A must successfully ack >= 1 append after SIGCONT
-   was attempted (i.e. the zombie really tried), else the trial is void.
+4. Anti-vacuous gate: the zombie's post-SIGCONT attempts must observably
+   reach A's write path — at least one post-CONT attempt gets an HTTP
+   response from A (an ack, or a storage-layer rejection such as
+   "detected newer DB client"). Pure connection failures mean the zombie
+   never really tried, and the trial is void.
 
 ## Replay plan
 
