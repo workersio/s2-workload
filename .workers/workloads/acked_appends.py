@@ -27,7 +27,8 @@ S2 = os.path.join(".workers", "vendor", "bin", "s2-linux-amd64")
 PORT = 8080
 BASIN = "durability-wl-01"
 STREAM = "acked-appends"
-DATA_DIR = os.path.join("data", "s2root")
+WORK_DIR = "/tmp/wl"  # /workspace (the repo checkout) is read-only in the guest
+DATA_DIR = os.path.join(WORK_DIR, "s2root")
 BASELINE_APPENDS = 40
 
 
@@ -68,7 +69,7 @@ def start_server(env_extra=None):
     env = dict(os.environ)
     if env_extra:
         env.update(env_extra)
-    out = open(os.path.join("data", "server.log"), "ab")
+    out = open(os.path.join(WORK_DIR, "server.log"), "ab")
     proc = subprocess.Popen(
         [S2, "lite", "--port", str(PORT), "--local-root", DATA_DIR],
         stdout=out, stderr=subprocess.STDOUT, env=env,
@@ -206,6 +207,7 @@ def main():
     seed = derive_seed()
     log(f"mode={mode} seed={seed}")
     os.makedirs(DATA_DIR, exist_ok=True)
+    os.makedirs(WORK_DIR, exist_ok=True)
 
     env_extra = {}
     kill_after = None
