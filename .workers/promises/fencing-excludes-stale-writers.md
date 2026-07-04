@@ -19,8 +19,8 @@ explorations:
       rejection is upstream-harvested territory; the restart boundary — the
       token's persistence and recovery path — is the differentiated attack,
       so baseline and restart are one exploration.
-    status: planned
-    result: null
+    status: done
+    result: green
     reason: null
     workload: workloads/fencing.sh
     command: sh .workers/workloads/fencing.sh stale-across-restart
