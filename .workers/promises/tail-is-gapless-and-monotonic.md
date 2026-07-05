@@ -58,17 +58,25 @@ explorations:
       next writer a seq that a pre-kill in-flight append also received, or
       leave a hole — i.e. does the union of all writers' acked ranges still
       tile [0, tail) with no seq owned by two writers across the boundary.
-    status: ready
-    result: null
+    status: done
+    result: green
     reason: null
     workload: workloads/tail_gapless.sh
     command: sh .workers/workloads/tail_gapless.sh straddle-at-kill
     faults: []
     depth: 10
-    replay: null
+    replay: >-
+      green draft nd726c2zx1k9369v7yzs0q4qq989z234 (depth 10, 9 green + 1
+      exit-3 void where the in-flight appends completed before SIGKILL — the
+      anti-vacuous gate correctly refused a quiesced trial, not a finding;
+      e.g. seed 3248286012: 18 acked + 3 unacked-in-flight straddle, restart
+      recovered, all 6 invariants pass). Red-proof draft
+      nd70ekpqfdzs6f7nyee8v7n62n89yhy7 (seed 4111024420, 500ms arm, 32 acked +
+      4 unacked-in-flight, planted overlap -> no_double_assign FAIL, exit 1).
+      Both via --workload-file injection on prod.
     freshness: new-current
     reported: null
-    published: null
+    published: pending
 ---
 
 # Tail is gapless and monotonic
@@ -113,17 +121,35 @@ appends at the instant of the kill, versus restart-interleaved which kills
 between waves (quiesced). One boundary is enough to exercise it.
 
 Oracle invariants (extend the promise's tiling oracle; make the guards
-explicit):
-1. Union of all writers' acked (start,end) ranges, sorted, tiles [0, tail)
-   exactly — no overlap, no gap.
-2. No seq is owned by two distinct writers across the kill boundary — a seq
-   assigned to a pre-kill in-flight append and re-assigned to a post-restart
-   writer is an immediate finding.
-3. Read-back [0, tail) is dense; every seq's content matches the writer that
-   owned its range; the server never persisted a record beyond its own
-   persisted tail (the `assert_no_records_following_tail` guard, core.rs:165,
-   must never have fired — a crash on the restart is itself a finding).
-4. Anti-vacuous: at least one writer had an append in-flight (sent, unacked)
+explicit). Producer revision 2026-07-05 (executor #7 flagged an inconsistency
+between the old invariant 1 "no gap" and invariant 4's in-flight-unacked
+appends): the recovered tail is `stable_pos` = the last *durable* seq
+(load_persisted_stream_tail, core.rs:144). An append that reached durability
+microseconds before SIGKILL #1 occupies a seq below the recovered tail, but if
+its ack response died with the process the *client* manifest marks it unacked.
+So a seq in [0, tail) legitimately need not be covered by an acked range — it
+may be covered by an in-flight-unacked payload this run sent. The corruption
+signals are OVERLAP and DOUBLE-ASSIGNMENT, not the mere existence of a gap in
+acked coverage. Revised invariants:
+1. No overlap and monotonic: sorted acked (start,end) ranges never overlap,
+   and no acked range extends at or beyond `tail`. (Gaps between acked ranges
+   are permitted only if reconciled by invariant 5.)
+2. No seq is owned by two distinct writers — a seq assigned to a pre-kill
+   in-flight append and re-assigned to a post-restart writer (or two acked
+   ranges sharing any seq) is an immediate finding. This is the arm's core
+   target.
+3. Read-back [0, tail) is dense: exactly one record per seq in [0, tail), no
+   holes below the recovered tail, and the server never persisted a record
+   beyond its own persisted tail (the `assert_no_records_following_tail`
+   guard, core.rs:165, must never have fired — a crash on restart is a
+   finding).
+4. Content ownership: every seq covered by an acked range holds exactly that
+   range's payloads, in order.
+5. Gap reconciliation: every seq in [0, tail) NOT covered by an acked range
+   holds a payload this run sent as an in-flight-unacked append — at most once,
+   never a phantom the run never sent. (A gap seq holding an unknown or
+   duplicated payload is a finding: recovery invented or double-applied data.)
+6. Anti-vacuous: at least one writer had an append in-flight (sent, unacked)
    at the SIGKILL (a real straddle, not a quiesced boundary), and the run
    completed the restart; otherwise the trial is void.
 

@@ -51,6 +51,13 @@ Static evidence index. Not a queue: no owners, no claims, no priorities.
   CLI's `--exploration` git gate fetches `origin/<current-branch>`): run it
   from the main checkout on `main`, not from a local-only worktree branch.
   Drafts via `--workload-file` injection skip the gate and run from anywhere.
+- Worker-side `--workload-file` injection now DELIVERS on prod (verified
+  2026-07-05: two drafts ran kill-during-recovery code present only in c865b2d,
+  absent from the a88afdc image, and executed correctly). The draft fast path
+  is live — drafts no longer need commit -> prepare -> run; inject and go.
+  Officials still require the committed+prepared image (publish.py does not
+  inject, so published runs stay pinned to a pushed commit). Supersedes the
+  earlier "injected file does not reach the guest on prod" note.
 - Fencing over raw HTTP: fence = append one record with a single header
   `["", "fence"]`, body = new token; guarded appends carry `fencing_token`
   in AppendInput; mismatch = HTTP 412. Ack `end` is exclusive.

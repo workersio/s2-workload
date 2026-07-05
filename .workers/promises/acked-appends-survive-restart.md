@@ -62,17 +62,22 @@ explorations:
       present, in order, exactly once after the final restart. This attacks
       the s2-lite tail-rebuild path being interrupted, which kill9 (single
       kill of the serving process) never reaches.
-    status: ready
-    result: null
+    status: done
+    result: green
     reason: null
     workload: workloads/acked_appends.py
     command: python3 .workers/workloads/acked_appends.py kill-during-recovery
     faults: []
     depth: 10
-    replay: null
+    replay: >-
+      green draft nd71w6wkxmtkw8cz8w0qm3680x89ywce (depth 10, 10/10 green, e.g.
+      seed 925258047: 211 acked, recovery interrupted 2x, all 6 invariants
+      pass); red-proof draft nd7eg0yedp6bmee03pb9c9erdd89zzjn (seed 4021235855,
+      2s flush arm, 663 acked, recovery interrupted 4x, ORACLE_SELFTEST drop ->
+      dense_prefix FAIL, exit 1). Both via --workload-file injection on prod.
     freshness: new-current
     reported: null
-    published: null
+    published: pending
 ---
 
 # Acked appends survive restart
