@@ -6,13 +6,13 @@
 - counters: { episodes: 14, producer: 6, executor: 8, workloads: ~214, session-workloads: 24 }
 - in-flight unit: none
 - re-plan triggers: none
-- publish-pending (both GREEN, blocked on origin/main push under "run the
-  workload harness" scope — default-branch push DENIED; wrap-up re-fires
-  publish.py once authorized; draft evidence durable in runs/):
-    - acked-appends-kill-during-recovery — red-proof nd7eg0yedp6bmee03pb9c9erdd89zzjn
-      RED, green nd71w6wkxmtkw8cz8w0qm3680x89ywce 10/10.
-    - tail-gapless-straddle-at-kill — red-proof nd70ekpqfdzs6f7nyee8v7n62n89yhy7
-      RED, green nd726c2zx1k9369v7yzs0q4qq989z234 9/10 green + 1 anti-vacuous void.
+- publish-pending: [] (RESOLVED — user authorized the origin/main push
+  post-wrap-up; ecd5734 + a8fa51b pushed to main, image auto-prepared, publish.py
+  re-fired all 8 officials @ ecd5734. Both new arms official + GREEN 10/10 on the
+  committed image (replay-confirmed):
+    - acked-appends-kill-during-recovery -> nd78bag1qkywcw14k4nrm3gr9s89zv8p
+    - tail-gapless-straddle-at-kill      -> nd7cgyertsgh18hvrvdf57ab6989zm80
+  Draft evidence still in runs/; official ids recorded in promise frontmatter.)
 - ready-queue (dispatcher order — untouched, next session resumes here):
     1. reads-tail-baseline                  (reads promise — new)
     2. reads-tail-across-restart            (reads promise — new)
