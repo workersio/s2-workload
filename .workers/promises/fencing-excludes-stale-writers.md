@@ -29,7 +29,7 @@ explorations:
     replay: null
     freshness: new-current
     reported: null
-    published: nd72wd65asargpwgx72sf05gyh89x5a5
+    published: nd70nakvpp3a779vwj2ypdnjkx89za3a
 ---
 
 # Fencing excludes stale writers
