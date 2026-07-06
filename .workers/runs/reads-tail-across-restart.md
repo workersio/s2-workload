@@ -57,3 +57,11 @@ records).
   ack and follow delivery gate on the same durable_seq advance, so the
   follower catches up between serial acks. Concurrent appenders are needed
   to observe acked-but-not-yet-delivered records.
+
+## Official (2026-07-06, image @ f4a2b31)
+
+nd71vb3mh6kbdhj6vxq49b593d8a062m, depth 10: 8 green / 2 VOID (both 2s-arm
+negative-lag samples — no invariant violations; delivery bursts outpaced
+writer-side ack bookkeeping in the 10s window, correctly voided per the
+anti-vacuity gate). Baseline official nd7fsyab7bb1q721xar5mm3a2n8a1x0w:
+5/5 green.

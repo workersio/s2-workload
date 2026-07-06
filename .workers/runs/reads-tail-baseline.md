@@ -58,3 +58,7 @@ Invariants: nonvacuous (observed floor 200), follow_wellformed (dense,
 dup-free, in order), acked_delivered (acks reach the follower with identical
 content), readback_dense (catch-up read tiles [0, tail)), observed_survive
 (observed set present and identical in the Remote read).
+
+## Official (2026-07-06, image @ f4a2b31)
+
+nd7fsyab7bb1q721xar5mm3a2n8a1x0w, depth 5: 5/5 green, all invariants PASS.

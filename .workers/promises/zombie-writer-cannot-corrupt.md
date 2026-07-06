@@ -28,7 +28,7 @@ explorations:
     replay: null
     freshness: new-current
     reported: null
-    published: nd78k85sk1fkre1w7jjw7290kd89ypc0
+    published: nd70f62aw5838hjn1jatkmc59h8a1fkg
 ---
 
 # Zombie writer cannot corrupt

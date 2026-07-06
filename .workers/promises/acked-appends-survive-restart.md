@@ -26,7 +26,7 @@ explorations:
     replay: null
     freshness: new-current
     reported: null
-    published: nd7d54g970np75k9773fatqdvs89ygws
+    published: nd7e1as4amv908kdyhja23vsj98a0nda
   - key: acked-appends-kill9-mid-stream
     title: Acked appends kill9 mid stream
     description: >-
@@ -46,7 +46,7 @@ explorations:
     replay: null
     freshness: new-current
     reported: null
-    published: nd7dhtxsf2d1ns6ht0wq0hqens89z82m
+    published: nd7167kcfftpt26gv49yj1gjv58a008c
   - key: acked-appends-kill-during-recovery
     title: Acked appends kill during recovery
     description: >-
@@ -77,7 +77,7 @@ explorations:
       dense_prefix FAIL, exit 1). Both via --workload-file injection on prod.
     freshness: new-current
     reported: null
-    published: nd78bag1qkywcw14k4nrm3gr9s89zv8p
+    published: nd7ajtmk9qbtq37qcd5p599ft58a15mt
 ---
 
 # Acked appends survive restart

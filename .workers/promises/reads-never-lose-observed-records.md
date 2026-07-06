@@ -30,7 +30,7 @@ explorations:
     replay: {run: nd70kjg2kp2gmk3zm8g9z4tcgh8a0yad, case: baseline, seed: 4097857263}
     freshness: new-current
     reported: null
-    published: pending
+    published: nd7fsyab7bb1q721xar5mm3a2n8a1x0w
   - key: reads-tail-across-restart
     title: Reads tail across restart
     description: >-
@@ -53,7 +53,7 @@ explorations:
     replay: {run: nd72rd95yjks58bywbh9pes1s58a0fvh, case: across-restart, seed: 3051447964}
     freshness: new-current
     reported: null
-    published: pending
+    published: nd71vb3mh6kbdhj6vxq49b593d8a062m
 ---
 
 # Reads never lose observed records
