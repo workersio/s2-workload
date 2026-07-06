@@ -1,9 +1,8 @@
 # Loop state
-- budget: session cap — 3 loops or 20 workloads (this session, started @ episodes:10/workloads:~190)
-- session-baseline: { episodes: 10, workloads: ~190 }
-- session-loops-used: 3 of 3 done (loop 3 = producer oracle-revision + executor #8, straddle-at-kill GREEN)
-- STOP CONDITION MET: session-workloads = 24 (>= 20-workload cap) AND 3 loops done. Wrap-up ran.
-- counters: { episodes: 14, producer: 6, executor: 8, workloads: ~214, session-workloads: 24 }
+- budget: session cap — 6 loops or 40 workloads (this session, started @ episodes:14/workloads:~214; budget raised from 3 loops per Viswa's 2026-07-06 directive — prior session stopped on cap, not exhaustion)
+- session-baseline: { episodes: 14, workloads: ~214 }
+- session-loops-used: 0 of 6
+- counters: { episodes: 14, producer: 6, executor: 8, workloads: ~214, session-workloads: 0 }
 - in-flight unit: none
 - re-plan triggers: none
 - publish-pending: [] (RESOLVED — user authorized the origin/main push
