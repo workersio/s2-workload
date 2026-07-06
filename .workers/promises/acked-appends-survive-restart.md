@@ -78,6 +78,33 @@ explorations:
     freshness: new-current
     reported: null
     published: nd7ajtmk9qbtq37qcd5p599ft58a15mt
+  - key: acked-appends-pipelined-kill
+    title: Acked appends pipelined kill
+    description: >-
+      Four concurrent writer connections keep several appends in flight at
+      once (one request = one ack per connection); SIGKILL lands mid-burst
+      with multiple appends in flight and freshly-acked records inside the
+      flush window, seed also selecting the SL8_FLUSH_INTERVAL arm
+      (default | 500ms | 2s); restart on the same root. Every record acked
+      to ANY writer before the kill must be present exactly once with
+      identical content; per-writer ack order maps to strictly increasing
+      seqs; unacked in-flight appends appear at most once. Distinct from
+      kill9: that arm kills a serial writer with exactly one in-flight
+      append, so the acked-set at risk is one flush window of ONE
+      pipelined stream — this arm is the multi-writer mid-pipeline kill
+      that the write-side suite never fires (test-reviewer flag,
+      2026-07-06).
+    status: ready
+    result: null
+    reason: null
+    workload: workloads/acked_appends.py
+    command: python3 .workers/workloads/acked_appends.py pipelined-kill
+    faults: []
+    depth: 10
+    replay: null
+    freshness: new-current
+    reported: null
+    published: null
 ---
 
 # Acked appends survive restart
@@ -172,3 +199,27 @@ three, or replay does not reproduce. The recovery arm additionally
 seed-derives the SIGKILL #2 delay within the restart window. A red run replays its recorded seed
 via `--exploration acked-appends-kill9-mid-stream`; evidence lands in
 runs/ with the manifest, the read-back dump, and the diff.
+
+## Adversarial model — pipelined-kill arm (producer #7, 2026-07-06)
+
+kill9 proves a serial writer's acked prefix survives; its at-risk set at the
+kill is one in-flight append. With concurrent writers the streamer pipelines
+multiple batches against storage latency (per-stream task serializes
+sequencing, but several submitted-unflushed batches coexist), and the
+durability notifier must release each ack only after ITS batch is covered —
+a notifier that fires on submission order rather than durable coverage, or
+coalesces watch updates across interleaved batches, loses acked records
+only in the multi-writer shape. Executor plan: reuse acked_appends.py
+machinery; writer pool of 4 threads each with its own manifest; kill point
+after a seed-chosen global ack count with >=2 appends in flight (spin for
+the window like reads_tail does); oracle = existing verify() family with
+the global-ack-order clause replaced by per-writer order (ack order within
+one connection maps to strictly increasing seqs; cross-writer interleaving
+is unconstrained). Anti-vacuous: >=2 in flight at kill AND >=1 ack returned
+within the last flush window before the kill. Red-proof: ORACLE_SELFTEST
+drops one acked record from the readback (existing selftest path).
+
+## Replay plan — pipelined-kill
+
+Seed drives writer pacing, kill point, flush arm, and pool interleaving.
+Red runs replay by recorded seed via --exploration.

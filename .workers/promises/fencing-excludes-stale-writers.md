@@ -30,6 +30,43 @@ explorations:
     freshness: new-current
     reported: null
     published: nd776v5e1vqfw4r4s4qrm39qa18a1780
+  - key: fencing-fence-ack-straddles-kill
+    title: Fencing fence ack straddles kill
+    description: >-
+      The fence WRITE itself races the crash: FIRST establish T1 by its
+      own fence append and prove it settled (durable and probe-verified: a
+      T1 append accepted, a stale/tokenless append 412-rejected) — this is
+      required because recovery of a MISSING token yields
+      FencingToken::default() (empty, core.rs:116), so without a settled
+      T1 the unacked-fence XOR branch conflates "T1 governs" with "default
+      token governs". Then write under T1, issue the fence-to-T2 append
+      (single header ["", "fence"], body = T2) and
+      SIGKILL the server at a seed-chosen offset around its ack (in-flight,
+      just-acked inside the flush window, or acked+settled), across
+      SL8_FLUSH_INTERVAL arms; restart on the same root; probe with a
+      T1-token append, a T2-token append, and a tokenless append. If the
+      fence was ACKED pre-kill, the recovered token must be T2 (T1 rejected
+      with 412, T2 accepted) — an acked fence that regresses to T1 is the
+      exactly-one-writer primitive silently breaking. If the fence was
+      unacked, either token may govern but exactly one must: acceptance of
+      T1 XOR acceptance of T2, consistent across repeated probes, and the
+      fence record appears in read-back iff T2 governs. All acked data
+      appends under the governing token exactly once; readback dense.
+      Distinct from stale-across-restart, which fences long before the kill
+      and only tests recovery of a settled token — this arm attacks the
+      token's own durability window (fence record + token KV ride the same
+      WriteBatch, streamer.rs:1039-1044, recovered core.rs:96-99).
+    status: ready
+    result: null
+    reason: null
+    workload: workloads/fencing.sh
+    command: sh .workers/workloads/fencing.sh fence-ack-straddles-kill
+    faults: []
+    depth: 10
+    replay: null
+    freshness: new-current
+    reported: null
+    published: null
 ---
 
 # Fencing excludes stale writers
