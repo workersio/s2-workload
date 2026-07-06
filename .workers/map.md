@@ -73,6 +73,17 @@ Static evidence index. Not a queue: no owners, no claims, no priorities.
   durable-gated broadcast (`client.follow`, backend/read.rs:190+,
   streamer.rs:607). Verified live from python http.client (chunked SSE
   parses fine via resp.readline()).
+- With slow `SL8_FLUSH_INTERVAL` arms (500ms/2s) a lazily-created stream
+  404s appends (`stream_not_found`) until its creation record is durable,
+  even on a `--create-stream-on-append` basin — prime new streams with a
+  retry-bounded append before precision phases.
+- Ack and follow-delivery gate on the same durable_seq advance, so a serial
+  one-request-one-ack writer never yields follower lag at a kill point;
+  producing acked-but-undelivered records requires concurrent appenders.
+- `check-tail` on a `--create-stream-on-read` basin auto-creates a missing
+  stream (200, tail 0) — a stream-level denial cannot be simulated there;
+  use a nonexistent basin (basins are never auto-created, 404
+  basin_not_found) to exercise denial paths.
 
 ## Areas
 

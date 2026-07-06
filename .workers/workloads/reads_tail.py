@@ -33,10 +33,16 @@ Oracle (see .workers/promises/reads-never-lose-observed-records.md):
     shape), never VOID; only a clean dense prefix that stalls may be VOID
 
 Oracle self-tests (each must exit 1 before a green is trusted):
-  ORACLE_SELFTEST=1    drop one observed record from the readback
-                       -> observed_survive FAIL
-  ORACLE_SELFTEST=gap  follower silently drops one delivered seq
-                       -> follow_wellformed FAIL via the partial-delivery path
+  ORACLE_SELFTEST=1            drop one observed record from the readback
+                               -> observed_survive FAIL
+  ORACLE_SELFTEST=gap          follower silently drops one delivered seq
+                               -> follow_wellformed FAIL (partial-delivery
+                               path in baseline, check_wellformed in
+                               across-restart)
+  ORACLE_SELFTEST=lost-stream  (across-restart) poll the stream in a
+                               nonexistent basin post-restart ->
+                               observed_survive FAIL via the
+                               serving-but-stream-denied path
 
 Exit codes: 0 green, 1 red (finding), 3 void/blocked (setup or vacuous trial).
 """
@@ -82,10 +88,11 @@ def derive_seed():
         return int.from_bytes(f.read(4), "little")
 
 
-def http_call(method, path, body=None, timeout=10):
+def http_call(method, path, body=None, timeout=10, basin=None):
     conn = http.client.HTTPConnection("127.0.0.1", PORT, timeout=timeout)
     try:
-        headers = {"S2-Basin": BASIN, "Authorization": "Bearer ignored"}
+        headers = {"S2-Basin": basin or BASIN,
+                   "Authorization": "Bearer ignored"}
         payload = None
         if body is not None:
             payload = json.dumps(body)
@@ -216,21 +223,37 @@ def wait_health(deadline_s=60):
     fail(3, "server did not become healthy in time")
 
 
-def wait_stream_ready(deadline_s=120):
+def wait_stream_ready(deadline_s=120, observed=None, basin=None):
     """Post-restart readiness: poll check-tail, never fixed sleeps (startup
-    sleeps one manifest_poll_interval for time-based fencing)."""
+    sleeps one manifest_poll_interval for time-based fencing).
+
+    Verdict routing (test-reviewer, executor #10): if the process is serving
+    (HTTP responses arrive) but persistently denies the stream while we hold
+    >=50 follower-observed records, that is the strongest form of the
+    promised finding — every observed record is unreadable — and must be
+    RED, not VOID. Connection-level failure (never healthy) stays VOID."""
     deadline = time.monotonic() + deadline_s
     last = None
+    serving_denials = 0
     while time.monotonic() < deadline:
         try:
             status, data = http_call(
-                "GET", f"/v1/streams/{STREAM}/records/tail", timeout=2)
+                "GET", f"/v1/streams/{STREAM}/records/tail", timeout=2,
+                basin=basin)
             if status == 200:
                 return json.loads(data)
             last = (status, data[:200])
+            serving_denials += 1  # the server answered; the stream did not
         except OSError as e:
             last = repr(e)
+            serving_denials = 0
         time.sleep(0.2)
+    if observed is not None and len(observed) >= 50 and serving_denials >= 25:
+        fail(1, f"server is serving but the stream is unreadable after "
+                f"restart ({serving_denials} consecutive denials, last "
+                f"{last}) while {len(observed)} follower-observed records "
+                f"are held — observed records lost with the stream",
+             inv=("observed_survive", "observed-records-survive"))
     fail(3, f"stream tail not readable after restart: {last}")
 
 
@@ -250,32 +273,54 @@ def create_basin():
         fail(3, f"create-basin failed: {r.stderr.strip()[:300]}")
 
 
-def append_one(payload):
-    """One request = one ack. Returns acked start seq or None if unacked."""
+def append_one(payload, why=None):
+    """One request = one ack. Returns acked start seq or None if unacked.
+    `why`: optional dict to record the failure reason for triage."""
     try:
         status, data = http_call(
             "POST", f"/v1/streams/{STREAM}/records",
             body={"records": [{"body": payload}]}, timeout=10)
-    except OSError:
+    except OSError as e:
+        if why is not None:
+            why["reason"] = repr(e)
         return None
     if status != 200:
+        if why is not None:
+            why["reason"] = f"HTTP {status}: {data[:200]!r}"
         return None
     return json.loads(data)["start"]["seq_num"]
 
 
-def read_all(tail_seq):
-    """Unary paginated catch-up read [0, tail) — the Remote-durability path."""
+def read_all(tail_seq, red_on_error=False):
+    """Unary paginated catch-up read [0, tail) — the Remote-durability path.
+
+    red_on_error (post-restart leg): a persistent non-200 below tail is a
+    finding — the read path denies a region it advertises — not setup.
+    Transient errors get a bounded retry either way."""
     records = []
     cursor = 0
     for _ in range(10000):
         if cursor >= tail_seq:
             break
-        status, data = http_call(
-            "GET",
-            f"/v1/streams/{STREAM}/records?seq_num={cursor}&count=1000",
-            timeout=30)
+        status, data = None, b""
+        for attempt in range(10):
+            try:
+                status, data = http_call(
+                    "GET",
+                    f"/v1/streams/{STREAM}/records?seq_num={cursor}&count=1000",
+                    timeout=30)
+            except OSError as e:
+                status, data = None, repr(e).encode()
+            if status == 200:
+                break
+            time.sleep(1)
         if status != 200:
-            fail(3, f"read failed at seq {cursor}: HTTP {status} {data[:200]}")
+            msg = (f"read persistently failing at seq {cursor} < tail "
+                   f"{tail_seq} after 10 retries: {status} {data[:200]}")
+            if red_on_error:
+                fail(1, msg + " — advertised region unreadable",
+                     inv=("readback_dense", "catchup-read-dense"))
+            fail(3, msg)
         batch = json.loads(data).get("records", [])
         if not batch:
             fail(1, f"read returned no records at seq {cursor} < tail "
@@ -458,50 +503,86 @@ def run_across_restart(seed):
     wait_health()
     create_basin()
 
-    follower = Follower(start_seq=0)
+    # Prime the stream: with slow flush arms the lazily-created stream 404s
+    # appends (stream_not_found) until its creation record is durable —
+    # retry-bounded first append (map reality note).
+    prime_deadline = time.monotonic() + 90
+    prime_seq, why = None, {}
+    while time.monotonic() < prime_deadline:
+        prime_seq = append_one(f"s{seed}-prime", why)
+        if prime_seq is not None:
+            break
+        time.sleep(0.25)
+    if prime_seq is None:
+        fail(3, f"prime append never acked: {why.get('reason', 'unknown')}")
+
+    selftest = os.environ.get("ORACLE_SELFTEST")
+    drop_seq = 30 if selftest == "gap" else None  # below the floor of 50
+    follower = Follower(start_seq=0, drop_seq=drop_seq)
     follower.start()
 
     total_appends = 4000
-    kill_after = 60 + (seed >> 2) % 400  # acks before SIGKILL
-    manifest = []  # (seq, payload) acked
-    state = {"in_flight": None, "stop": False}
+    # kill point scaled by flush arm: ack throughput is ~flush-rate bound
+    # (2s arm: ~1.5 acks/s with 3 writers), so slow arms need a lower cap
+    # or the 120s deadline voids the trial before the kill
+    arm_span = {"": 400, "500ms": 200, "2s": 80}[arm]
+    kill_after = 60 + (seed >> 2) % arm_span  # writer acks before SIGKILL
+    manifest = []  # (seq, payload) acked; append is atomic under the GIL
+    state = {"stop": False}
+    idx_lock = threading.Lock()
+    idx = {"i": 0}
 
     def writer():
-        for i in range(total_appends):
-            if state["stop"]:
-                return
+        while not state["stop"]:
+            with idx_lock:
+                i = idx["i"]
+                if i >= total_appends:
+                    return
+                idx["i"] = i + 1
             payload = f"s{seed}-r0-{i:05d}"
-            state["in_flight"] = payload
-            seq = append_one(payload)
-            state["in_flight"] = None
+            w = {}
+            seq = append_one(payload, w)
             if seq is None:
-                return  # server gone
+                if not state["stop"]:
+                    log(f"writer: append {i} unacked: "
+                        f"{w.get('reason', 'unknown')}")
+                return  # server gone (or a real pre-kill failure — logged)
             manifest.append((seq, payload))
 
-    wt = threading.Thread(target=writer, daemon=True)
-    wt.start()
+    # Pipelined writer pool: concurrent appends keep acks landing while
+    # deliveries are still in flight, so the follower is genuinely behind
+    # (lag > 0) at the kill — the spec's anti-vacuous condition.
+    writers = [threading.Thread(target=writer, daemon=True) for _ in range(3)]
+    for t in writers:
+        t.start()
 
-    # wait for the kill point, then SIGKILL while the follower is behind
     deadline = time.monotonic() + 120
     while time.monotonic() < deadline and len(manifest) < kill_after:
-        if not wt.is_alive():
-            fail(3, f"writer finished early ({len(manifest)} acks) before "
+        if not any(t.is_alive() for t in writers):
+            fail(3, f"writers finished early ({len(manifest)} acks) before "
                     f"kill point {kill_after} — setup issue")
         time.sleep(0.002)
     if len(manifest) < kill_after:
         fail(3, f"kill point {kill_after} not reached in time "
                 f"({len(manifest)} acks) — void")
 
-    acked_at_kill = len(manifest)
-    observed_at_kill = len(follower.observed)
-    in_flight = state["in_flight"]
+    # spin briefly for a genuine lag>0 window, then kill inside it
+    lag_deadline = time.monotonic() + 10
+    acked_at_kill = observed_at_kill = kill_lag = 0
+    while time.monotonic() < lag_deadline:
+        acked_at_kill = len(manifest) + 1  # + prime record
+        observed_at_kill = len(follower.observed)
+        kill_lag = acked_at_kill - observed_at_kill
+        if kill_lag > 0:
+            break
+        time.sleep(0.0005)
     server.send_signal(signal.SIGKILL)
-    kill_lag = acked_at_kill - observed_at_kill
-    log(f"SIGKILL at acked={acked_at_kill} observed={observed_at_kill} "
-        f"lag={kill_lag} in_flight={in_flight!r}")
+    log(f"SIGKILL at acked={acked_at_kill} (incl prime) "
+        f"observed={observed_at_kill} lag={kill_lag}")
     state["stop"] = True
     server.wait(timeout=30)
-    wt.join(timeout=30)
+    for t in writers:
+        t.join(timeout=30)
     follower.join(timeout=30)  # socket EOF/reset ends it
     observed = list(follower.observed)
     log(f"follower pre-kill: {len(observed)} observed, ended={follower.ended}")
@@ -509,24 +590,36 @@ def run_across_restart(seed):
     if observed_at_kill < 50:
         fail(3, f"only {observed_at_kill} observed before kill — below floor "
                 f"50, void")
-    if kill_lag <= 0 and in_flight is None:
-        fail(3, "follower fully caught up and writer idle at kill — quiesced "
-                "kill proves nothing, void")
+    if kill_lag <= 0:
+        fail(3, f"no lag>0 window found in 10s (last sampled lag="
+                f"{kill_lag}; delivery bursts can outpace writer-side ack "
+                f"bookkeeping at flush boundaries) — kill not proven to "
+                f"threaten undelivered acks, void")
     invariant("nonvacuous", "kill-while-behind", True,
               f"kill at observed={observed_at_kill} (floor 50), "
-              f"lag={kill_lag}, in_flight={in_flight is not None}")
+              f"lag={kill_lag} (> 0)")
 
     check_wellformed(observed, "pre-kill follow")
 
     # restart on the same root
     server2 = start_server(env_extra)
     wait_health()
-    tail = wait_stream_ready()
+    if selftest == "lost-stream":
+        # red-prove the stream-denial path: a serving server that denies the
+        # stream while we hold >=floor observed records must RED. A missing
+        # *stream* is auto-created by create-stream-on-read (proven: the
+        # first selftest shape came back 200/tail-0), so deny via a
+        # nonexistent basin — basins are never auto-created.
+        log("ORACLE_SELFTEST: polling the stream in a nonexistent basin "
+            "post-restart")
+        wait_stream_ready(deadline_s=20, observed=observed,
+                          basin=BASIN + "-selftest-missing")
+    tail = wait_stream_ready(observed=observed)
     tail_seq = tail["tail"]["seq_num"]
     log(f"post-restart tail={tail_seq}")
 
     # invariant 1 + 3: post-restart Remote read vs the observed prefix
-    readback = read_all(tail_seq)
+    readback = read_all(tail_seq, red_on_error=True)
     verify_readback_dense(readback, tail_seq, len(observed))
     verify_observed_in_readback(observed, readback)
 

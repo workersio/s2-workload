@@ -1,8 +1,8 @@
 # Loop state
 - budget: session cap — 6 loops or 40 workloads (this session, started @ episodes:14/workloads:~214; budget raised from 3 loops per Viswa's 2026-07-06 directive — prior session stopped on cap, not exhaustion)
 - session-baseline: { episodes: 14, workloads: ~214 }
-- session-loops-used: 1 of 6
-- counters: { episodes: 15, producer: 6, executor: 9, workloads: ~231, session-workloads: 17 }
+- session-loops-used: 2 of 6 — STOP CONDITION MET: session-workloads = 49 (>= 40 cap). Wrap-up running.
+- counters: { episodes: 16, producer: 6, executor: 10, workloads: ~263, session-workloads: 49 }
 - in-flight unit: none
 - re-plan triggers: none
 - publish-pending: [] (RESOLVED — user authorized the origin/main push
@@ -12,9 +12,27 @@
     - acked-appends-kill-during-recovery -> nd78bag1qkywcw14k4nrm3gr9s89zv8p
     - tail-gapless-straddle-at-kill      -> nd7cgyertsgh18hvrvdf57ab6989zm80
   Draft evidence still in runs/; official ids recorded in promise frontmatter.)
-- ready-queue (dispatcher order):
-    1. reads-tail-across-restart            (reads promise)
-- last episode summary: session loop 1 = executor #9. reads-tail-baseline
+- ready-queue (dispatcher order): empty. Candidate directions for the next
+  producer episode (not drafted — budget hit first): (1) manifest ⊆ readback
+  across the across-restart kill schedule — catches ack-before-remote-durable
+  for lag-window records; no write-side promise kills mid-pipeline
+  (test-reviewer flag, 2026-07-06); (2) zombie double-kill mid-recovery arm;
+  (3) fence/append race variants beyond the bounced TOCTOU shape; (4) disk
+  fault models if the runtime exposes them; (5) reads: follow resume via
+  Last-Event-Id header (vs seq_num param) across restart.
+- last episode summary: session loop 2 = executor #10. reads-tail-
+  across-restart done+GREEN (published: pending). Pipelined 3-writer pool +
+  sampled lag>0 kill window (serial writers can never lag — ack and delivery
+  share the durable_seq event); prime-append fix for slow-flush 404s;
+  arm-scaled kill_after killed the 2s-arm void storm (depth-6: 6/6 green,
+  zero voids). Test-reviewer REDO fixed (VOID-masking: serving-but-stream-
+  denied post-restart and read_all non-200 now RED; gap selftest wired
+  in-mode). Red-proofs: ORACLE_SELFTEST=1 across the real kill RED
+  (seed=1837281636), gap in-mode RED (seed=290419235), lost-stream via
+  nonexistent basin RED (seed=4028217004; check-tail auto-creates missing
+  streams on create-stream-on-read basins — map note). 32 draft workloads
+  this arm (49 session total).
+- PRIOR: session loop 1 = executor #9. reads-tail-baseline
   done+GREEN (published: pending — official fires at wrap-up). Built
   workloads/reads_tail.py (both modes; across-restart runs next). Probed the
   follow transport: SSE on the read path (Accept: text/event-stream), batch/

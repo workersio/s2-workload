@@ -43,17 +43,17 @@ explorations:
       reordered, or duplicated after restart. A record handed to the follower
       that a post-restart Remote read does not return is a dirty/phantom read
       across a crash — a high-value durability finding.
-    status: ready
-    result: null
+    status: done
+    result: green
     reason: null
     workload: workloads/reads_tail.py
     command: python3 .workers/workloads/reads_tail.py across-restart
     faults: []
     depth: 10
-    replay: null
+    replay: {run: nd72rd95yjks58bywbh9pes1s58a0fvh, case: across-restart, seed: 3051447964}
     freshness: new-current
     reported: null
-    published: null
+    published: pending
 ---
 
 # Reads never lose observed records
@@ -130,3 +130,24 @@ an internal gap now goes RED (follow_wellformed) instead of VOID, and both
 oracle legs are red-proven (`ORACLE_SELFTEST=1` -> observed_survive FAIL;
 `ORACLE_SELFTEST=gap` -> follow_wellformed FAIL). The follower machinery and
 partial-delivery guard are shared with the across-restart arm.
+
+## Evidence — reads-tail-across-restart (executor #10, 2026-07-06)
+
+GREEN across flush arms (default/500ms/2s): depth-3 pipelined draft 3/3,
+depth-6 arm-scaled 6/6, depth-1 final-code sanity — every kill inside a
+sampled lag>0 window (acked-but-undelivered records at SIGKILL), s2-lite
+never denied a follower-observed record after restart; resumed follows tiled
+[K, tail) exactly. Design notes: ack and follow delivery advance in the same
+durable_seq event, so a serial writer can never lag — a 3-thread pipelined
+writer pool plus a sampled kill window implements the spec's lag>0
+anti-vacuity honestly. Test-reviewer REDO fixed: post-restart
+serving-but-stream-denied now RED via observed_survive (was VOID-masked;
+red-proven with a nonexistent-basin selftest — note check-tail auto-creates
+a missing *stream* on create-stream-on-read basins, so stream-level denial
+cannot be simulated), read_all retries then REDs below tail, and
+ORACLE_SELFTEST=gap wired in-mode (red-proven pre-kill). Depth-10 sweep
+voids on the 2s arm were throughput-bound kill points, fixed by arm-scaled
+kill_after — anti-vacuity gate untouched. Reviewer flag for a future arm:
+manifest ⊆ readback across this kill schedule would catch
+ack-before-remote-durable for lag-window records (write-side promises never
+kill mid-pipeline).
