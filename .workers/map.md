@@ -61,6 +61,18 @@ Static evidence index. Not a queue: no owners, no claims, no priorities.
 - Fencing over raw HTTP: fence = append one record with a single header
   `["", "fence"]`, body = new token; guarded appends carry `fencing_token`
   in AppendInput; mismatch = HTTP 412. Ack `end` is exclusive.
+- Follow transport is **SSE**: `GET /v1/streams/{s}/records?seq_num=N` with
+  `Accept: text/event-stream` (extract.rs routes on the Accept header ->
+  `ReadRequest::EventStream`, handlers/v1/records.rs:210). Events:
+  `event: batch` (data = same ReadBatch JSON as unary reads, `id` =
+  `seq,count,bytes`), `event: ping` heartbeats, `event: error`, bare
+  `data: [DONE]` terminator. `Last-Event-Id: seq,count,bytes` resumes at
+  seq+1 (records.rs:49). Unbounded read (no count/bytes/until) = infinite
+  wait -> live tail. Catch-up scan filters at `DurabilityLevel::Remote`
+  (backend/read.rs:127); caught-up sessions hand off to the streamer's
+  durable-gated broadcast (`client.follow`, backend/read.rs:190+,
+  streamer.rs:607). Verified live from python http.client (chunked SSE
+  parses fine via resp.readline()).
 
 ## Areas
 

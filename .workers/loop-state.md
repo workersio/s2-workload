@@ -1,8 +1,8 @@
 # Loop state
 - budget: session cap — 6 loops or 40 workloads (this session, started @ episodes:14/workloads:~214; budget raised from 3 loops per Viswa's 2026-07-06 directive — prior session stopped on cap, not exhaustion)
 - session-baseline: { episodes: 14, workloads: ~214 }
-- session-loops-used: 0 of 6
-- counters: { episodes: 14, producer: 6, executor: 8, workloads: ~214, session-workloads: 0 }
+- session-loops-used: 1 of 6
+- counters: { episodes: 15, producer: 6, executor: 9, workloads: ~231, session-workloads: 17 }
 - in-flight unit: none
 - re-plan triggers: none
 - publish-pending: [] (RESOLVED — user authorized the origin/main push
@@ -12,10 +12,22 @@
     - acked-appends-kill-during-recovery -> nd78bag1qkywcw14k4nrm3gr9s89zv8p
     - tail-gapless-straddle-at-kill      -> nd7cgyertsgh18hvrvdf57ab6989zm80
   Draft evidence still in runs/; official ids recorded in promise frontmatter.)
-- ready-queue (dispatcher order — untouched, next session resumes here):
-    1. reads-tail-baseline                  (reads promise — new)
-    2. reads-tail-across-restart            (reads promise — new)
-- last episode summary: loop 3 = executor #8 + inline producer #6 oracle
+- ready-queue (dispatcher order):
+    1. reads-tail-across-restart            (reads promise)
+- last episode summary: session loop 1 = executor #9. reads-tail-baseline
+  done+GREEN (published: pending — official fires at wrap-up). Built
+  workloads/reads_tail.py (both modes; across-restart runs next). Probed the
+  follow transport: SSE on the read path (Accept: text/event-stream), batch/
+  ping/error events + [DONE], Last-Event-Id resume; catch-up scan filters
+  DurabilityLevel::Remote (read.rs:127), caught-up sessions hand off to the
+  streamer's durable-gated broadcast — map.md reality note added.
+  Test-reviewer REDO (real follow-gap routed to VOID not RED; exactly-once
+  leg unproven) fixed: gap-aware wait_observed + partial_delivery_verdict
+  (gap/dup in partial delivery = RED, only a clean stalled dense prefix may
+  VOID), ORACLE_SELFTEST=gap red-proof added. Both legs red-proven
+  (gap seed=2958128658, drop seed=3164093376); post-fix depth-5 sweep 5/5
+  green (replay seed=4097857263). 17 draft workloads this arm.
+- PRIOR: loop 3 (prev session) = executor #8 + inline producer #6 oracle
   revision. tail-gapless-straddle-at-kill GREEN. Building the straddle exposed a
   spec inconsistency (invariant 1 "no gap" vs invariant 4 "in-flight unacked at
   kill" — a durable-but-unacked append legitimately sits below tail with no acked

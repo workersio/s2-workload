@@ -20,17 +20,17 @@ explorations:
       Bring-up: proves the follow-vs-read oracle and the follow transport
       work at all before the restart attack. Expectations demoted — a green
       here is plumbing, not evidence about the crash seam.
-    status: ready
-    result: null
+    status: done
+    result: green
     reason: null
     workload: workloads/reads_tail.py
     command: python3 .workers/workloads/reads_tail.py baseline
     faults: []
     depth: 5
-    replay: null
+    replay: {run: nd70kjg2kp2gmk3zm8g9z4tcgh8a0yad, case: baseline, seed: 4097857263}
     freshness: new-current
     reported: null
-    published: null
+    published: pending
   - key: reads-tail-across-restart
     title: Reads tail across restart
     description: >-
@@ -119,3 +119,14 @@ point (which must land while the follower is behind). A red run replays its
 recorded seed via `--exploration reads-tail-across-restart`; evidence lands
 in runs/ with the follower's observed log, the post-restart catch-up dump,
 and the diff.
+
+## Evidence — reads-tail-baseline (executor #9, 2026-07-06)
+
+GREEN at depth 5 (post-fix sweep nd70kjg2kp2gmk3zm8g9z4tcgh8a0yad, 5/5).
+Transport probed and pinned: SSE (`Accept: text/event-stream` on the read
+path), batch/ping/error events + `[DONE]`, `Last-Event-Id` resume — recorded
+as a map.md reality note. Test-reviewer REDO fixed: a partial delivery with
+an internal gap now goes RED (follow_wellformed) instead of VOID, and both
+oracle legs are red-proven (`ORACLE_SELFTEST=1` -> observed_survive FAIL;
+`ORACLE_SELFTEST=gap` -> follow_wellformed FAIL). The follower machinery and
+partial-delivery guard are shared with the across-restart arm.
