@@ -68,6 +68,16 @@
   stream-delete-recreate-resurrection (667) row 2 — do NOT re-litigate at
   the next producer episode; promote them first.
 - re-plan triggers: none
+- SESSION WRAP 2026-07-07 (loop 14, workload rail): committed d6a4d6e (specs
+  + workloads + evidence) + 743d0e0 (.gitignore for pyc) + 7e7410b (published
+  ids); pushed to fork origin; image prepared + ready at 743d0e0; publish.py
+  re-fired all 20 done explorations green/red as recorded, every published:
+  field rewritten. Spot-checked officials: trim-straddles-kill 10/10 GREEN,
+  delete-recreate-kill-mid-purge 10/10 GREEN, FINDING #1 doe-stale-deadline
+  3/3 RED, FINDING #2 control-plane-delete-straddle-ensure-erased 10/10 RED.
+  Two product findings stand on the page. Stop = workload safety rail
+  (~245/250; a full next unit won't fit). Next session resumes at row 5, #6
+  control-plane-ack-then-kill.
 - publish-pending: [] (PRIOR session 2026-07-06 wrapped clean: stop condition
   hit at 49 session-workloads >= 40 cap after executor #9 + #10; publish.py
   re-fired all 10 done explorations @ f4a2b31, every `published:` field
