@@ -2,3 +2,7 @@ target/
 .DS_Store
 history.*.jsonl
 porcupine-outputs/
+
+# python bytecode from local workload compile-checks
+__pycache__/
+*.pyc
