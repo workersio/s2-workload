@@ -94,17 +94,24 @@ explorations:
       pipelined stream — this arm is the multi-writer mid-pipeline kill
       that the write-side suite never fires (test-reviewer flag,
       2026-07-06).
-    status: ready
-    result: null
+    status: done
+    result: green
     reason: null
     workload: workloads/acked_appends.py
     command: python3 .workers/workloads/acked_appends.py pipelined-kill
     faults: []
     depth: 10
-    replay: null
+    replay: >-
+      green sweep draft nd76m3rw39zj15m78d07snee118a1zqq (depth 10, 10/10
+      green, all non-vacuous: 2-4 in flight at kill, last ack 0.6-32ms prior;
+      e.g. seed 130903179 default arm, 325 acked). Red-proof draft
+      nd73ta7cztjngkpryvcxx8mc0d8a0ee8 (seed 3400598209, 500ms arm,
+      ORACLE_SELFTEST drop -> dense_prefix FAIL, exit 1). Post-hardening
+      confirm nd76s1w1crwy1zz5x430m7mryx8a0shh (2/2 green). All via
+      --workload-file injection on prod.
     freshness: new-current
     reported: null
-    published: null
+    published: pending
 ---
 
 # Acked appends survive restart

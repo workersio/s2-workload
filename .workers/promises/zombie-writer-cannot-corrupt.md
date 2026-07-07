@@ -29,6 +29,58 @@ explorations:
     freshness: new-current
     reported: null
     published: nd70f62aw5838hjn1jatkmc59h8a1fkg
+  - key: zombie-live-overlap-double-start
+    title: Zombie live overlap double start
+    description: >-
+      The floor rung strategy-critic required instead of certifying this
+      promise 2-rung (producer #8): in both existing rungs the prior
+      instance is FROZEN (SIGSTOPped or dead) during the successor's entire
+      boot, so the time-based fencing assumption — the startup sleep of one
+      manifest_poll_interval "to ensure prior instance fenced out"
+      (server.rs:186-198) — is never actually contested. Here it is: no
+      signals at all. Instance A serves and keeps ACTIVELY appending
+      (steady writer pool) while instance B starts on the same root, sleeps
+      through its fencing window, takes over, and serves writes — an
+      operator double-start / supervisor-restart-while-hung, the promise's
+      honest no-fault shape and its highest-novelty attack at once. A keeps
+      writing throughout B's boot and after takeover until A's handle
+      self-fences ("detected newer DB client") or A is torn down. Oracle is
+      the existing persist-time-boundary family unchanged (invariants 1-4
+      of this promise): nothing A persists after B's takeover boundary
+      appears in read-back, B-acked records exactly once, dense read-back;
+      anti-vacuity requires >=1 A-append attempt landing DURING B's fencing
+      sleep and >=1 after B's first ack, both observably reaching A's write
+      path. A-acks issued during B's boot that lie below the takeover
+      boundary are legitimate (persist-time criterion, invariant 2).
+      Availability clause (test-reviewer, executor #16): B failing to
+      serve on the live root or persistently refusing appends is RED
+      (successor_available) — a double-start must not brick the
+      successor, and a fencing-sleep regression would present exactly as
+      successor dysfunction; data verification still runs first where
+      reachable. Mode-scoped oracle tightening: no truncation allowance —
+      every A-acked record must appear in read-back (no freeze exists to
+      excuse a hole; a missing durable ack is acked-data loss).
+      Reuses workloads/zombie_writer.sh machinery minus signals.
+    status: done
+    result: green
+    reason: null
+    workload: workloads/zombie_writer.sh
+    command: sh .workers/workloads/zombie_writer.sh live-overlap-double-start
+    faults: []
+    depth: 10
+    replay: >-
+      green sweep draft nd71ggcsn58jg65edhqs9kktzd8a0x88 (depth 10, 10/10
+      green, every trial witnessed 69-80 boot-window + 76-151 post-T
+      attempts, ZERO A-acks after T; e.g. seed 931885941). Shakeout
+      nd7131887bhhs35hk8m22p11p58a02hq (4/4). Red-proofs: pre-REDO
+      nd728vnm0wysjw0hrqqwtjj77x8a1qmb (2/2 RED, seeds 4095698169 /
+      813245199 -> no_zombie_persisted); post-REDO
+      nd7ah1zn37z0xkjg93atcpe11d8a0e5z (seed 4035185551 -> RED). Post-REDO
+      confirm nd75z3nwechmrh278evxsqkwz98a0aas (3/3 green,
+      successor_available PASS emitted). All via --workload-file injection.
+    freshness: new-current
+    reported: null
+    published: pending
   - key: zombie-double-kill-mid-recovery
     title: Zombie double kill mid recovery
     description: >-
@@ -51,17 +103,24 @@ explorations:
       brick it. Executor note: the recovery window is sub-ms–ms (Remote
       reads); expect a high void rate and spam zombie attempts across the
       whole window rather than firing once.
-    status: ready
-    result: null
+    status: done
+    result: green
     reason: null
     workload: workloads/zombie_writer.sh
     command: sh .workers/workloads/zombie_writer.sh double-kill-mid-recovery
     faults: []
     depth: 10
-    replay: null
+    replay: >-
+      green sweep draft nd7b0a5bdfp8p1ca2s3yj2z19n8a0q33 (depth 10, 10/10
+      green, zero voids; 5-8 zombie attempts inside every 196-297ms un-served
+      recovery window; C recovered on attempt 1 in all; e.g. seed 618423676).
+      Red-proof draft nd7998hybtnc19wkthdhw1bdg58a17v6 (seed 1113152951,
+      ORACLE_SELFTEST relabel -> no_zombie_persisted FAIL, exit 1).
+      Post-hardening confirm nd70xg28j0xyjk4ew5hwx6gscs8a1e5t (3/3 green,
+      send+response-in-window witness). All via --workload-file injection.
     freshness: new-current
     reported: null
-    published: null
+    published: pending
 ---
 
 # Zombie writer cannot corrupt
@@ -110,6 +169,18 @@ and before B's first append. Invariants:
    response from A (an ack, or a storage-layer rejection such as
    "detected newer DB client"). Pure connection failures mean the zombie
    never really tried, and the trial is void.
+
+Measurement limit (live-overlap rung; test-reviewer, executor #16): the
+boundary is read at B's first check-tail 200, before B's first append, so
+two blur windows are black-box-indistinguishable from pre-takeover
+durable writes: (a) an A write persisted in [B DB-open, boundary-read]
+that B recovers and builds on classifies as legitimate; (b) an A ack
+after T whose range lies at/below the measured boundary classifies as a
+"LATE ACK (allowed)" — those log lines are the triage hook if one ever
+looks suspicious. Neither is consumer-visible corruption (the stream
+stays dense and B-acked intact); empirically both are unreachable today
+(A's handle is fenced at B's DB-open, ~3s before T, zero post-T A-acks
+across 10/10 sweep trials).
 
 ## Replay plan
 

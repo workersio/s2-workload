@@ -78,17 +78,28 @@ explorations:
       limit - consumed records (the decremented budget), not the raw
       limit. Red-proof: a +1-shifted Last-Event-Id header must trip the
       tiling oracle (skipped or duplicated record at the boundary).
-    status: ready
-    result: null
+    status: done
+    result: green
     reason: null
     workload: workloads/reads_tail.py
     command: python3 .workers/workloads/reads_tail.py last-event-id-resume
     faults: []
     depth: 10
-    replay: null
+    replay: >-
+      green sweep draft nd74s6rgt1wd20hhykje3zj43s8a0hd3 (depth 10, 9/10
+      green + 1 documented 2s-arm anti-vacuity void; budget and plain arms,
+      all flush arms). Red-proofs: +1-shifted header
+      nd73gccsjx37zw4wy7kgr1de2x8a10dc (2/2 exit-1 follow_wellformed, seeds
+      3934514529 budget / 680046819 plain); readback-drop
+      nd79hx999y1v5d0x0r8mpygk058a1s41 (seed 1108731994,
+      observed_survive); perturbed event id
+      nd7cktxkegj8tcf656crd3hbpx8a0h38 (seed 3761786860,
+      header_describes_delivery). Post-REDO confirm
+      nd72dzcywtx6amb7w08qvtk2eh8a15dc (4/4 green). All via
+      --workload-file injection.
     freshness: new-current
     reported: null
-    published: null
+    published: pending
   - key: reads-tail-slow-follower-lagged
     title: Reads tail slow follower lagged
     description: >-
@@ -118,17 +129,25 @@ explorations:
       exceed ~1-4 MB across 25+slack appends per stall; 25 tiny batches
       never lag. Follower stall pacing, writer burst sizes, and stall
       count are seed-driven.
-    status: ready
-    result: null
+    status: done
+    result: green
     reason: null
     workload: workloads/reads_tail.py
     command: python3 .workers/workloads/reads_tail.py slow-follower-lagged
     faults: []
     depth: 10
-    replay: null
+    replay: >-
+      green sweep draft nd75mfsza3wndpve0k06gkzj0h8a06j0 (depth 10, 10/10
+      green, every trial witnessed 9-71 catch-up batches after follow
+      handoff across 1-3 stalls; payloads 128-256 KiB). Red-proofs: gap
+      nd7ef5pthmwbz37vyqtvkqv3b18a1243 (seed 3348524698,
+      follow_wellformed via partial_delivery_verdict); readback-drop
+      nd7b8g8bvvwjff1vpn3k81h4j18a1j2p (seed 775902020,
+      observed_survive). Shakeout v2 nd736afd7ncjat3yvep3dryjjx8a1q57
+      (4/4 green). All via --workload-file injection.
     freshness: new-current
     reported: null
-    published: null
+    published: pending
 ---
 
 # Reads never lose observed records
@@ -265,3 +284,49 @@ one batch in the client to prove the equality leg if needed.
 Seed drives writer pacing/bursts, kill point and flush arm
 (last-event-id-resume), stall schedule (slow-follower-lagged). Red runs
 replay by recorded seed via --exploration.
+
+## Evidence — reads-tail-last-event-id-resume (executor #14, 2026-07-06)
+
+GREEN across flush arms and both budget/plain arms: depth-4 shakeout 4/4,
+depth-10 sweep 9/10 (+1 documented 2s-arm anti-vacuity void), post-REDO
+confirm 4/4. Boundary tiling exact in every trial (resume started exactly
+at observed[-1]+1); budget sessions delivered exactly limit−consumed then
+[DONE] (e.g. count=259 re-sent, 253 consumed → exactly 6). Design notes:
+the follower keeps draining the kernel socket buffer after SIGKILL, so
+observed routinely catches the durable tail despite lag>0 at the kill —
+the mode appends 3-8 fresh post-restart records so the resumed session
+always has records beyond the boundary (provenance-independent for the
+header arithmetic under test; pre-kill durability still fully asserted by
+observed_survive/readback_dense). Follower now commits last_event_id only
+at event dispatch (WHATWG EventSource semantics) — a kill mid-event cannot
+advance the resume cursor. Test-reviewer REDO fixed two VOID-masks: (1) a
+server-emitted id that misdescribes its own delivery is now RED
+header_describes_delivery (red-proven via ORACLE_SELFTEST=bad-id), was
+"harness bug" void; (2) the server persistently rejecting its own emitted
+header post-readback is now RED header_accepted (parse/validation
+regression), was "transport" void. Residual (reviewer, non-gating): bytes
+budget (records.rs:62) untested — count-only arm; want==available corner
+eliminated by capping want ≤ available−1.
+
+## Evidence — reads-tail-slow-follower-lagged (executor #15, 2026-07-06)
+
+GREEN at depth 10 (10/10, every trial witnessed 9-71 catch-up batches
+after follow handoff across 1-3 stalls). The Lagged handoff is physically
+hard to force: with default buffers ~5 MB of stall bytes were absorbed by
+server sndbuf + client rcvbuf and delivery stayed 100% follow-path (first
+shakeout 4/4 vacuous, batch count == append count). Fix was physical, not
+oracular: SO_RCVBUF capped at 32 KiB before connect (window scaling honors
+it) + bursts of 70-110 × 128-256 KiB appends per stall; catch-up
+coalescing (batch count << append count) then corroborates real Lagged.
+New machinery: Follower pause/unpause socket stall, per-batch has_tail
+metadata (the spec's witness — tail-less batch after tail-ful ones),
+norm_body sha256 normalization on BOTH oracle sides for >1 KiB bodies
+(memory-bounded equality; all other modes' payloads pass through
+verbatim). Verify runs before the vacuity exit; per-stall drains RED on
+provable gaps. Both legs red-proven in-mode (gap seed 3348524698,
+readback-drop seed 775902020). Test-reviewer KEEP, no required action.
+Residual for a future arm (reviewer): overlap the writer burst with the
+unpause window so the post-Lagged catch-up races in-flight not-yet-Remote
+appends — the schedule that could reach the empty-scan skip branch
+(read.rs:183-185) itself; this green proves handoff resume correctness
+over a quiescent durable range.

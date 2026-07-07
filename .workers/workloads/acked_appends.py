@@ -6,6 +6,10 @@ Modes:
   kill9                start -> append under load -> SIGKILL mid-stream -> restart -> verify
   kill-during-recovery kill9 phase 1, then crash the server repeatedly DURING
                        first-access recovery, then final clean restart -> verify
+  pipelined-kill       4 concurrent writers (one request = one ack per
+                       connection) keep appends in flight; SIGKILL mid-burst
+                       with >=2 in flight and a fresh ack inside the flush
+                       window -> restart -> verify (per-writer ack order)
 
 Oracle (see .workers/promises/acked-appends-survive-restart.md):
   - manifest line written only after the append HTTP response is fully read
@@ -89,7 +93,7 @@ def start_server(env_extra=None):
     return proc
 
 
-def wait_health(deadline_s=60):
+def wait_health(deadline_s=60, red_on_fail=False):
     deadline = time.monotonic() + deadline_s
     while time.monotonic() < deadline:
         try:
@@ -99,10 +103,15 @@ def wait_health(deadline_s=60):
         except OSError:
             pass
         time.sleep(0.2)
+    if red_on_fail:
+        # post-kill restart: a server that cannot come back violates the
+        # promise ("present after restart") — availability RED, not void
+        fail(1, "server did not become healthy after the kill — restart "
+                "availability lost", inv=("restart_serves", "restart-serves"))
     fail(3, "server did not become healthy in time")
 
 
-def wait_stream_ready(deadline_s=120):
+def wait_stream_ready(deadline_s=120, red_on_fail=False):
     """Readiness after restart: startup sleeps one manifest_poll_interval
     (time-based fencing), so poll check-tail instead of fixed sleeps."""
     deadline = time.monotonic() + deadline_s
@@ -117,6 +126,9 @@ def wait_stream_ready(deadline_s=120):
         except OSError as e:
             last = repr(e)
         time.sleep(0.2)
+    if red_on_fail:
+        fail(1, f"stream tail not readable after post-kill restart: {last} — "
+                "acked data unreachable", inv=("restart_serves", "restart-serves"))
     fail(3, f"stream tail not readable after restart: {last}")
 
 
@@ -190,6 +202,115 @@ def interrupt_recovery_rounds(seed):
             proc.kill()
             proc.wait(timeout=30)
     return mid_recovery_kills
+
+
+WRITERS = 4
+
+
+class PoolState:
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.in_flight = 0
+        self.acked = 0
+        self.last_ack_at = 0.0
+        self.killed = False
+
+
+def pipelined_writer(w, seed, pool, out_entries):
+    """One connection-serial writer: at most one request outstanding, next
+    append issued the moment the ack is read — the pool of these keeps
+    several appends pipelined against storage latency globally."""
+    for i in range(4000):
+        if pool.killed:
+            break
+        payload = f"s{seed}-w{w}-{i:05d}"
+        entry = {"payload": payload, "acked": False, "start": None,
+                 "end": None, "writer": w}
+        with pool.lock:
+            pool.in_flight += 1
+        result = append_one(payload)
+        now = time.monotonic()
+        with pool.lock:
+            pool.in_flight -= 1
+            if result:
+                pool.acked += 1
+                pool.last_ack_at = now
+        if result:
+            entry["acked"] = True
+            entry["start"], entry["end"] = result
+        out_entries.append(entry)
+        if not result:
+            if pool.killed:
+                break
+            time.sleep(0.05)  # pre-kill failure (e.g. transient 404) — back off
+        else:
+            # seeded pacing jitter: varies pool interleaving per seed
+            time.sleep(((seed >> (w * 3)) % 4) / 2000.0)
+
+
+def run_pipelined(seed, server, window):
+    """Drive the writer pool, SIGKILL mid-burst. Returns (manifest,
+    in_flight_at_kill, last_ack_age_s)."""
+    # Prime the lazily-created stream: with slow flush arms appends 404 until
+    # the creation record is durable (map.md reality note).
+    prime_payload = f"s{seed}-prime"
+    prime = None
+    deadline = time.monotonic() + 90
+    while time.monotonic() < deadline and prime is None:
+        prime = append_one(prime_payload)
+        if prime is None:
+            time.sleep(0.25)
+    if prime is None:
+        fail(3, "prime append never acked — stream creation not durable, setup blocked")
+    manifest = [{"payload": prime_payload, "acked": True,
+                 "start": prime[0], "end": prime[1], "writer": "prime"}]
+
+    # acks-before-kill scaled per flush arm (2s arm yields ~2 acks/s over 4
+    # serial connections — unscaled targets void on runtime)
+    base, span = {0.005: (30, 300), 0.5: (15, 60), 2.0: (8, 16)}[window]
+    kill_after = base + (seed >> 2) % span
+    log(f"writers={WRITERS} kill_after={kill_after} flush_window={window}s")
+
+    pool = PoolState()
+    per_writer = [[] for _ in range(WRITERS)]
+    threads = [threading.Thread(target=pipelined_writer,
+                                args=(w, seed, pool, per_writer[w]), daemon=True)
+               for w in range(WRITERS)]
+    for t in threads:
+        t.start()
+
+    deadline = time.monotonic() + 240
+    reached = False
+    while time.monotonic() < deadline:
+        with pool.lock:
+            if pool.acked >= kill_after:
+                reached = True
+                break
+        time.sleep(0.005)
+    if not reached:
+        pool.killed = True
+        with pool.lock:
+            got = pool.acked
+        fail(3, f"kill point never reached ({got}/{kill_after} acks) — vacuous trial")
+
+    # spin until >=2 appends are genuinely in flight, then kill mid-burst
+    spin_deadline = time.monotonic() + 10
+    while time.monotonic() < spin_deadline:
+        with pool.lock:
+            if pool.in_flight >= 2:
+                break
+        time.sleep(0.0005)
+    with pool.lock:
+        infl_at_kill = pool.in_flight
+        last_ack_age = time.monotonic() - pool.last_ack_at
+    server.send_signal(signal.SIGKILL)
+    pool.killed = True
+    for t in threads:
+        t.join(timeout=20)
+    log(f"kill: in_flight={infl_at_kill} last_ack_age={last_ack_age * 1000:.1f}ms")
+    for entries in per_writer:
+        manifest.extend(entries)
+    return manifest, infl_at_kill, last_ack_age
 
 
 def create_basin():
@@ -291,14 +412,20 @@ def verify(manifest, readback, tail_seq):
         fail(1, f"{len(missing)} acked record(s) absent after restart",
              inv=("acked_survive", "acked-exactly-once"))
 
-    order = [by_payload[m["payload"]][0] for m in acked]
-    if order != sorted(order):
-        fail(1, f"acked records out of ack order: {order[:20]}",
-             inv=("acked_order", "ack-order-preserved"))
+    # ack order maps to strictly increasing seqs per writer connection;
+    # cross-writer interleaving is unconstrained (serial modes = one writer)
+    writers = {}
+    for m in acked:
+        writers.setdefault(m.get("writer", 0), []).append(m)
+    for w, entries in sorted(writers.items(), key=lambda kv: str(kv[0])):
+        order = [by_payload[m["payload"]][0] for m in entries]
+        if order != sorted(order):
+            fail(1, f"writer {w}: acked records out of ack order: {order[:20]}",
+                 inv=("acked_order", "ack-order-preserved"))
     invariant("acked_survive", "acked-exactly-once", True,
               f"{len(acked)}/{len(acked)} acked records present after restart")
     invariant("acked_order", "ack-order-preserved", True,
-              "read-back order matches ack order")
+              f"read-back order matches ack order per writer ({len(writers)} writer(s))")
 
     log(f"oracle: {len(acked)} acked verified, {len(readback)} records read, "
         f"tail {tail_seq}")
@@ -330,10 +457,43 @@ def main():
         # Larger acked prefix than kill9: more records => longer first-access
         # recovery scan => a wider window for SIGKILL #2 to land inside it.
         kill_after = 100 + (seed >> 2) % 600
+    elif mode == "pipelined-kill":
+        arm = ["", "500ms", "2s"][seed % 3]
+        if arm:
+            env_extra["SL8_FLUSH_INTERVAL"] = arm
+        log(f"flush-arm={arm or 'default'}")
 
     server = start_server(env_extra)
     wait_health()
     create_basin()
+
+    if mode == "pipelined-kill":
+        window = {"": 0.005, "500ms": 0.5, "2s": 2.0}[arm]
+        manifest, infl_at_kill, last_ack_age = run_pipelined(seed, server, window)
+        acked_count = sum(1 for m in manifest if m["acked"])
+        log(f"appends: {len(manifest)} attempted, {acked_count} acked")
+        if infl_at_kill < 2:
+            fail(3, f"only {infl_at_kill} append(s) in flight at kill — "
+                    "pipeline window missed, void")
+        if last_ack_age > max(window, 0.05):
+            fail(3, f"last ack {last_ack_age * 1000:.0f}ms before kill — "
+                    "nothing freshly acked inside the flush window, void")
+        if acked_count < 8:
+            fail(3, f"only {acked_count} acks before kill — below floor 8, void")
+        server.wait(timeout=30)
+
+        server2 = start_server()
+        wait_health(red_on_fail=True)
+        tail = wait_stream_ready(red_on_fail=True)
+        tail_seq = tail["tail"]["seq_num"]
+        readback = read_all(tail_seq)
+        verify(manifest, readback, tail_seq)
+        invariant("pipeline_at_kill", "multi-writer-in-flight", True,
+                  f"{infl_at_kill} appends in flight at SIGKILL, last ack "
+                  f"{last_ack_age * 1000:.0f}ms prior")
+        server2.terminate()
+        log("VERDICT: GREEN")
+        return
 
     manifest = []
     killed = False
@@ -385,9 +545,10 @@ def main():
         invariant("recovery_interrupted", "crash-during-recovery", True,
                   f"{mid} SIGKILL(s) landed during first-access recovery")
 
+    post_kill = mode != "baseline"
     server2 = start_server()
-    wait_health()
-    tail = wait_stream_ready()
+    wait_health(red_on_fail=post_kill)
+    tail = wait_stream_ready(red_on_fail=post_kill)
     tail_seq = tail["tail"]["seq_num"]
     readback = read_all(tail_seq)
     verify(manifest, readback, tail_seq)
