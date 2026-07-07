@@ -30,7 +30,7 @@ explorations:
     replay: {run: nd70kjg2kp2gmk3zm8g9z4tcgh8a0yad, case: baseline, seed: 4097857263}
     freshness: new-current
     reported: null
-    published: nd7fsyab7bb1q721xar5mm3a2n8a1x0w
+    published: nd74pmw2vr7z8qf228fwmfffms8a3xsc
   - key: reads-tail-across-restart
     title: Reads tail across restart
     description: >-
@@ -53,7 +53,7 @@ explorations:
     replay: {run: nd72rd95yjks58bywbh9pes1s58a0fvh, case: across-restart, seed: 3051447964}
     freshness: new-current
     reported: null
-    published: nd71vb3mh6kbdhj6vxq49b593d8a062m
+    published: nd755qhdaxyg4yr00hf9yn53498a3cht
   - key: reads-tail-last-event-id-resume
     title: Reads tail Last-Event-Id resume
     description: >-
@@ -99,7 +99,7 @@ explorations:
       --workload-file injection.
     freshness: new-current
     reported: null
-    published: pending
+    published: nd7d95rp17yp1354mk7zrjfzg98a2egf
   - key: reads-tail-slow-follower-lagged
     title: Reads tail slow follower lagged
     description: >-
@@ -147,7 +147,7 @@ explorations:
       (4/4 green). All via --workload-file injection.
     freshness: new-current
     reported: null
-    published: pending
+    published: nd76wbbdh4n0vmhtwf4shbdqxn8a2myk
 ---
 
 # Reads never lose observed records

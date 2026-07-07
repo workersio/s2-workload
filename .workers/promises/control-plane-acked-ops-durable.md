@@ -95,7 +95,7 @@ explorations:
     replay: "SEED=1000000 (500ms arm; also 999999 default / 1000001 2s / fresh 424242); drafts nd77c6bwpmh6ysnjp5bs70a5t98a11a9, nd78dbht4c0m1hmqwe27a5mqns8a0krp, nd708rsmkfnxtcas320c916tbh8a11xe, nd79bqvaqzcwar86vjfhyt27mx8a0yr3, nd7382tv4vamyxfr9tmgkwvjcs8a01fa"
     freshness: new-current
     reported: 2026-07-07
-    published: pending
+    published: nd7frym4zs530q180emq4shw618a3m72
   - key: control-plane-baseline
     title: Control plane baseline
     description: >-

@@ -105,7 +105,7 @@ explorations:
     replay: "SEED=1500 (seam2 partial-purge GREEN, n=13000 T=11501); SEED=258 (seam1 GREEN); red-proofs 1500 / 258 with ORACLE_SELFTEST=resurrect"
     freshness: new-current
     reported: 2026-07-07
-    published: pending
+    published: nd754v1fhhpqtexb8y372yzrsd8a3bwk
 ---
 
 # Trim is final

@@ -56,7 +56,7 @@ explorations:
       default regime. All via --workload-file injection.
     freshness: new-current
     reported: null
-    published: pending
+    published: nd72qb85f933arm1pkqcwzgjjs8a2d92
   - key: fencing-stale-across-restart
     title: Fencing stale across restart
     description: >-
@@ -77,7 +77,7 @@ explorations:
     replay: null
     freshness: new-current
     reported: null
-    published: nd776v5e1vqfw4r4s4qrm39qa18a1780
+    published: nd753409knf9j9zb3hfrw6ns158a2qvy
   - key: fencing-fence-ack-straddles-kill
     title: Fencing fence ack straddles kill
     description: >-
@@ -124,7 +124,7 @@ explorations:
       --workload-file injection.
     freshness: new-current
     reported: null
-    published: pending
+    published: nd70x19g0bn3w5q8g709t899h18a31aq
 ---
 
 # Fencing excludes stale writers

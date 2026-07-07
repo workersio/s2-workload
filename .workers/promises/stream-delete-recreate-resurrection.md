@@ -55,7 +55,7 @@ explorations:
     replay: "SEED=88001 (hardened confirm); also 5/5 sweep + selftest 77002"
     freshness: new-current
     reported: 2026-07-07
-    published: pending
+    published: nd71jqpg9vwvvneztgcmq1kpf18a35e0
   - key: delete-recreate-kill-mid-purge
     title: Delete recreate kill mid purge
     description: >-
@@ -117,7 +117,7 @@ explorations:
     replay: "SEED=90000 (DIVIDED) / 88817 (PRE-FINALIZE) hardened confirms; sweep + 3963731212 fixed-replay"
     freshness: new-current
     reported: 2026-07-07
-    published: pending
+    published: nd7eb0tve3gf58ns0v2dtqpc758a2n22
   - key: doe-stale-deadline-across-recreate
     title: DOE stale deadline across recreate
     description: >-
@@ -177,7 +177,7 @@ explorations:
     replay: "SEED=2492750010 (fresh-seed confirm 555000333); drafts nd73hn9zcw85r0vcnnfern09x18a1cxw, nd72c44ybyknm6yv4c1h575x0x8a1atw, nd743p947k7tm6f7sfskrh99a58a15df"
     freshness: new-current
     reported: 2026-07-07
-    published: pending
+    published: nd754m0b03nttctn6yxwfzfg4h8a30f9
 ---
 
 # Recreated stream is genuinely fresh

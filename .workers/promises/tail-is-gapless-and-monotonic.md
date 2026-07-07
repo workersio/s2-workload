@@ -25,7 +25,7 @@ explorations:
     replay: null
     freshness: new-current
     reported: null
-    published: nd77gte4vhkfjnd9hb30a1nr298a1v69
+    published: nd735cr375dkekcn7b7zhrkxbd8a2ens
   - key: tail-gapless-restart-interleaved
     title: Tail gapless restart interleaved
     description: >-
@@ -42,7 +42,7 @@ explorations:
     replay: null
     freshness: new-current
     reported: null
-    published: nd70bg50bp6jbbd7vzxnragbj58a1bfz
+    published: nd70jcq9ka2cjj4c524rt9fk7h8a2pwr
   - key: tail-gapless-straddle-at-kill
     title: Tail gapless straddle at kill
     description: >-
@@ -76,7 +76,7 @@ explorations:
       Both via --workload-file injection on prod.
     freshness: new-current
     reported: null
-    published: nd740av2w7f4r730j3hkbssjas8a0n16
+    published: nd70eget4azdjdb1jchfgtsweh8a28y9
 ---
 
 # Tail is gapless and monotonic

@@ -118,7 +118,7 @@ explorations:
     replay: "SEED=88 / 300 (greens); red-proofs 101 with ORACLE_SELFTEST=doubleapply|phantom412|retrydoubleapply"
     freshness: new-current
     reported: 2026-07-07
-    published: pending
+    published: nd78rde86tgv42np79eftanf4h8a2k1p
 ---
 
 # CAS appends are exactly-once

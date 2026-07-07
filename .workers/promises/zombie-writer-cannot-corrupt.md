@@ -28,7 +28,7 @@ explorations:
     replay: null
     freshness: new-current
     reported: null
-    published: nd70f62aw5838hjn1jatkmc59h8a1fkg
+    published: nd7ab7890b264pgx8v5vmndyk98a2k07
   - key: zombie-live-overlap-double-start
     title: Zombie live overlap double start
     description: >-
@@ -80,7 +80,7 @@ explorations:
       successor_available PASS emitted). All via --workload-file injection.
     freshness: new-current
     reported: null
-    published: pending
+    published: nd7chgy4ps49fmkzd8qvd9nbg18a2fs7
   - key: zombie-double-kill-mid-recovery
     title: Zombie double kill mid recovery
     description: >-
@@ -120,7 +120,7 @@ explorations:
       send+response-in-window witness). All via --workload-file injection.
     freshness: new-current
     reported: null
-    published: pending
+    published: nd717br5hsc30k6bc0fxrwfwsn8a2wst
 ---
 
 # Zombie writer cannot corrupt
